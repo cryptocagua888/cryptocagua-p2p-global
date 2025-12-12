@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { saveSheetUrl, getSheetUrl, saveAdminEmail, getAdminEmail, setAdminSession, isAdmin, verifyServerPin } from '../services/dataService';
-import { ClipboardDocumentIcon, CheckIcon, LockClosedIcon, EnvelopeIcon, ArrowRightOnRectangleIcon, GlobeAmericasIcon, ServerIcon } from '@heroicons/react/24/outline';
+import { ClipboardDocumentIcon, CheckIcon, LockClosedIcon, EnvelopeIcon, ArrowRightOnRectangleIcon, GlobeAmericasIcon, ServerIcon, TableCellsIcon } from '@heroicons/react/24/outline';
 
 export const ConfigGuide: React.FC = () => {
   const [url, setUrl] = useState('');
@@ -10,15 +10,23 @@ export const ConfigGuide: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [pin, setPin] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isEnvPinSet, setIsEnvPinSet] = useState(false);
   
-  // Check if env var is active
-  const isEnvPinSet = !!process.env.ADMIN_PIN;
-
   useEffect(() => {
     setUrl(getSheetUrl());
     setEmail(getAdminEmail());
     if (isAdmin()) {
       setIsAuthenticated(true);
+    }
+
+    // Safe check for Env Var
+    try {
+      // @ts-ignore
+      if (typeof process !== 'undefined' && process.env && process.env.ADMIN_PIN) {
+        setIsEnvPinSet(true);
+      }
+    } catch (e) {
+      // Ignore ReferenceError if process is not defined
     }
   }, []);
 
@@ -62,7 +70,6 @@ export const ConfigGuide: React.FC = () => {
   var sheet = ss.getSheets()[0]; // Hoja de Ofertas
   
   // --- ACCIÓN: AUTH ---
-  // Nota: Si usas ADMIN_PIN en Vercel, esta parte del script es secundaria.
   if (data.action === 'auth') {
     var configSheet = ss.getSheetByName("Config");
     if (!configSheet) {
@@ -79,9 +86,11 @@ export const ConfigGuide: React.FC = () => {
   if (data.action === 'read') {
     var rows = sheet.getDataRange().getValues();
     var offers = [];
-    // Recorremos las filas. 0=ID, 10=Status, etc.
-    for (var i = 0; i < rows.length; i++) {
+    
+    // IMPORTANTE: Empezamos en i = 1 para saltar los encabezados de la Fila 1
+    for (var i = 1; i < rows.length; i++) {
        var r = rows[i];
+       // Validamos que exista un ID (columna 0) para considerarlo oferta válida
        if(r[0] && r[0] !== '') { 
          offers.push({
            id: r[0], createdAt: r[1], type: r[2], category: r[3],
@@ -98,8 +107,9 @@ export const ConfigGuide: React.FC = () => {
   if (data.action === 'updateStatus') {
     var rows = sheet.getDataRange().getValues();
     for (var i = 0; i < rows.length; i++) {
-      if (rows[i][0] == data.id) {
-        // Columna K es índice 10 (Status)
+      // Convertimos a string para comparar seguros
+      if (String(rows[i][0]) === String(data.id)) {
+        // Columna K es índice 10 (Status), sumamos 1 porque getRange es base-1
         sheet.getRange(i + 1, 11).setValue(data.status);
         break;
       }
@@ -126,8 +136,14 @@ export const ConfigGuide: React.FC = () => {
 
   const copyCode = () => {
     navigator.clipboard.writeText(appScriptCode);
-    alert("Código copiado al portapapeles");
+    alert("Código actualizado copiado al portapapeles");
   };
+
+  const headers = [
+    "A: ID", "B: FECHA", "C: TIPO", "D: CATEGORIA", 
+    "E: TITULO", "F: ACTIVO", "G: PRECIO", "H: UBICACION", 
+    "I: DESCRIPCION", "J: CONTACTO", "K: ESTADO", "L: NICKNAME"
+  ];
 
   if (!isAuthenticated) {
     return (
@@ -212,21 +228,42 @@ export const ConfigGuide: React.FC = () => {
           
           <h3 className="text-xl font-bold text-white mb-4">Base de Datos P2P</h3>
 
+          {/* New Step 1: Sheet Structure */}
+          <div className="bg-slate-800/50 p-6 rounded-xl border border-white/5">
+            <h3 className="text-lg font-semibold text-primary-400 mb-4 flex items-center">
+                <TableCellsIcon className="h-5 w-5 mr-2" />
+                Paso 1: Estructura de la Hoja (Headers)
+            </h3>
+            <p className="text-sm text-gray-300 mb-4">
+                En tu Google Sheet, en la <strong>Fila 1</strong>, escribe estos títulos en orden (Columnas A - L) para mantener el orden visual:
+            </p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                {headers.map((h) => (
+                    <div key={h} className="bg-slate-900 border border-slate-700 p-2 rounded text-xs font-mono text-center text-gray-400">
+                        {h}
+                    </div>
+                ))}
+            </div>
+          </div>
+
           {/* Script Code */}
           <div className="bg-slate-800/50 p-6 rounded-xl border border-white/5">
-            <h3 className="text-lg font-semibold text-primary-400 mb-4">Paso 1: Código del Backend</h3>
-            <p className="text-sm text-gray-300 mb-2">Este código permite LEER y ESCRIBIR en tu hoja.</p>
+            <h3 className="text-lg font-semibold text-primary-400 mb-4">Paso 2: Actualizar Código Backend</h3>
+            <p className="text-sm text-gray-300 mb-2">Este nuevo código está ajustado para respetar los encabezados de la Fila 1.</p>
             <div className="relative bg-black/50 rounded-lg p-4 font-mono text-xs text-green-400 overflow-x-auto border border-gray-700">
                <button onClick={copyCode} className="absolute top-2 right-2 text-gray-400 hover:text-white bg-slate-700 p-1.5 rounded-md">
                  <ClipboardDocumentIcon className="h-4 w-4" />
                </button>
                <pre>{appScriptCode}</pre>
             </div>
+            <p className="text-xs text-yellow-500 mt-2">
+                ⚠️ Recuerda: Después de pegar, haz clic en "Implementar" - "Nueva implementación" en Google Apps Script.
+            </p>
           </div>
 
           {/* Connect */}
           <div className="bg-slate-800/50 p-6 rounded-xl border border-white/5">
-            <h3 className="text-lg font-semibold text-primary-400 mb-4">Paso 2: Conexión Local (Admin)</h3>
+            <h3 className="text-lg font-semibold text-primary-400 mb-4">Paso 3: Conexión Local (Admin)</h3>
             <div className="flex gap-3">
               <input 
                 type="text" 
@@ -241,7 +278,7 @@ export const ConfigGuide: React.FC = () => {
             </div>
           </div>
 
-          {/* GLOBAL CONFIG INSTRUCTION - UPDATED */}
+          {/* GLOBAL CONFIG INSTRUCTION */}
           <div className="bg-gradient-to-r from-emerald-900/60 to-teal-900/60 p-6 rounded-xl border border-emerald-500/50 shadow-lg">
              <div className="flex items-start gap-4">
                 <div className="bg-emerald-500 p-3 rounded-full text-white">

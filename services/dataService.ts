@@ -18,6 +18,20 @@ const GLOBAL_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzG0JpURjoflk
 // CAMBIO: Data inicial vacía. Ahora solo se mostrará lo que venga de Google Sheets.
 const INITIAL_DATA: Offer[] = [];
 
+// Helper para acceder a variables de entorno sin romper el navegador
+const getEnv = (key: string): string | undefined => {
+  try {
+    // @ts-ignore
+    if (typeof process !== 'undefined' && process.env) {
+      // @ts-ignore
+      return process.env[key];
+    }
+  } catch (e) {
+    return undefined;
+  }
+  return undefined;
+};
+
 // --- Config Getters ---
 
 export const getSheetUrl = () => {
@@ -155,9 +169,8 @@ export const isAdmin = (): boolean => {
 
 // --- PIN Verification Logic ---
 export const verifyServerPin = async (pin: string): Promise<boolean> => {
-  // Prioridad 1: Variable de Entorno de Vercel
-  // Si configuras ADMIN_PIN en Vercel, esta será la contraseña maestra.
-  const envPin = process.env.ADMIN_PIN;
+  // Prioridad 1: Variable de Entorno (si existe)
+  const envPin = getEnv('ADMIN_PIN');
   if (envPin) {
      return pin === envPin;
   }

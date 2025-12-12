@@ -2,7 +2,17 @@ import { GoogleGenAI } from "@google/genai";
 
 // Helper to get safe client
 const getClient = () => {
-  const apiKey = process.env.API_KEY;
+  let apiKey: string | undefined;
+  try {
+    // @ts-ignore
+    if (typeof process !== 'undefined' && process.env) {
+      // @ts-ignore
+      apiKey = process.env.API_KEY;
+    }
+  } catch(e) {
+    console.warn("Process env not available");
+  }
+
   if (!apiKey) {
     console.warn("API Key not found in environment variables.");
     return null;
