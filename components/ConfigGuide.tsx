@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { saveSheetUrl, getSheetUrl, saveAdminEmail, getAdminEmail, setAdminSession, isAdmin, verifyServerPin } from '../services/dataService';
-import { ClipboardDocumentIcon, CheckIcon, LockClosedIcon, EnvelopeIcon, ArrowRightOnRectangleIcon, GlobeAmericasIcon, ServerIcon, TableCellsIcon } from '@heroicons/react/24/outline';
+import { ClipboardDocumentIcon, CheckIcon, LockClosedIcon, EnvelopeIcon, ArrowRightOnRectangleIcon, GlobeAmericasIcon, ServerIcon, TableCellsIcon, KeyIcon } from '@heroicons/react/24/outline';
 
 export const ConfigGuide: React.FC = () => {
   const [url, setUrl] = useState('');
@@ -19,14 +19,14 @@ export const ConfigGuide: React.FC = () => {
       setIsAuthenticated(true);
     }
 
-    // Safe check for Env Var
+    // Static Safe check for Env Var
     try {
       // @ts-ignore
-      if (typeof process !== 'undefined' && process.env && process.env.ADMIN_PIN) {
+      if (typeof process !== 'undefined' && process.env.ADMIN_PIN) {
         setIsEnvPinSet(true);
       }
     } catch (e) {
-      // Ignore ReferenceError if process is not defined
+      // Ignore ReferenceError
     }
   }, []);
 
@@ -184,9 +184,12 @@ export const ConfigGuide: React.FC = () => {
               {loading ? 'Verificando...' : 'Entrar'}
             </button>
           </form>
-          {!isEnvPinSet && (
-             <p className="text-[10px] text-gray-500 mt-4">PIN por defecto: 2024</p>
-          )}
+          
+          <div className="mt-6 text-[10px] text-gray-500 bg-slate-900/50 p-3 rounded-lg border border-slate-700">
+             <p className="font-bold text-gray-400 mb-1">¿Olvidaste tu PIN?</p>
+             <p>1. Usa el PIN de Rescate: <strong className="text-white">1234</strong></p>
+             <p className="mt-1">2. O el configurado en Vercel (Variable: ADMIN_PIN)</p>
+          </div>
         </div>
       </div>
     );
@@ -222,6 +225,27 @@ export const ConfigGuide: React.FC = () => {
                 {emailSaved ? <CheckIcon className="h-5 w-5" /> : 'Guardar'}
               </button>
             </div>
+          </div>
+          
+          <div className="bg-slate-800/50 p-6 rounded-xl border border-white/5">
+            <h3 className="text-lg font-semibold text-primary-400 mb-4 flex items-center">
+              <KeyIcon className="h-5 w-5 mr-2" />
+              Gestión del PIN
+            </h3>
+            {isEnvPinSet ? (
+                <div className="text-sm text-green-400 flex items-center bg-green-900/20 p-3 rounded-lg border border-green-500/30">
+                    <CheckIcon className="h-5 w-5 mr-2" />
+                    El PIN está siendo gestionado seguramente por Vercel.
+                </div>
+            ) : (
+                <p className="text-sm text-gray-300">
+                Para cambiar tu PIN de acceso, ve a tu Hoja de Cálculo de Google:
+                <br/>
+                1. Abre la pestaña llamada <strong>Config</strong> (si no existe, se creará al usar el sistema).
+                <br/>
+                2. Cambia el número en la celda <strong>B1</strong>.
+                </p>
+            )}
           </div>
 
           <div className="border-t border-white/10 my-6"></div>
