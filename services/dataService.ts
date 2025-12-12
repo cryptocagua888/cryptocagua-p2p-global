@@ -18,9 +18,15 @@ const GLOBAL_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzG0JpURjoflk
 // CAMBIO: Data inicial vacía. Ahora solo se mostrará lo que venga de Google Sheets.
 const INITIAL_DATA: Offer[] = [];
 
-// Helper para acceder a variables de entorno sin romper el navegador
+// Helper para acceder a variables de entorno de forma segura
+// Ahora que index.html tiene un polyfill, esto no crasheará, pero puede retornar undefined.
 const getEnv = (key: string): string | undefined => {
   try {
+    // @ts-ignore
+    if (window.process && window.process.env) {
+      // @ts-ignore
+      return window.process.env[key];
+    }
     // @ts-ignore
     if (typeof process !== 'undefined' && process.env) {
       // @ts-ignore
@@ -171,7 +177,7 @@ export const isAdmin = (): boolean => {
 export const verifyServerPin = async (pin: string): Promise<boolean> => {
   // Prioridad 1: Variable de Entorno (si existe)
   const envPin = getEnv('ADMIN_PIN');
-  if (envPin) {
+  if (envPin && envPin.length > 0) {
      return pin === envPin;
   }
 
@@ -197,13 +203,21 @@ export const verifyServerPin = async (pin: string): Promise<boolean> => {
   }
 };
 
+// Helper for UUID with fallback
+const generateId = () => {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+        return crypto.randomUUID();
+    }
+    return 'id-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+};
+
 export const addOffer = (offer: Omit<Offer, 'id' | 'createdAt' | 'status' | 'reputation' | 'verified'>): Offer => {
   const stored = localStorage.getItem(STORAGE_KEY);
   const currentOffers: Offer[] = stored ? JSON.parse(stored) : INITIAL_DATA;
   
   const newOffer: Offer = {
     ...offer,
-    id: crypto.randomUUID(),
+    id: generateId(),
     createdAt: new Date().toISOString(),
     status: 'PENDING',
     reputation: 0, 
