@@ -123,6 +123,7 @@ export const fetchOffers = async (): Promise<Offer[]> => {
     // Para LEER usamos text/plain y un body stringificado simple, esto suele funcionar bien para respuestas
     const response = await fetch(scriptUrl, {
       method: 'POST',
+      redirect: 'follow',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({ action: 'read' })
     });
@@ -164,17 +165,11 @@ export const approveOffer = async (id: string) => {
   const scriptUrl = getSheetUrl();
   if (scriptUrl) {
     try {
-      // Usamos URLSearchParams para asegurar que llegue
-      const params = new URLSearchParams();
-      params.append('action', 'updateStatus');
-      params.append('id', id);
-      params.append('status', 'APPROVED');
-
       await fetch(scriptUrl, {
         method: 'POST',
         mode: 'no-cors',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: params
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'updateStatus', id, status: 'APPROVED' })
       });
     } catch(e) { console.error(e); }
   }
@@ -230,17 +225,11 @@ export const verifyServerPin = async (pin: string): Promise<boolean> => {
     return false;
   }
 
-  // 3. Intentamos validar con la Hoja via Form Data
+  // 3. Intentamos validar con la Hoja via JSON
   try {
-    const params = new URLSearchParams();
-    params.append('action', 'auth');
-    params.append('pin', pin);
-
-    // Nota: Para recibir respuesta JSON, a veces se necesita redirect: follow. 
-    // Si no-cors es estricto, esto podría fallar, pero auth suele necesitar cors standard o text/plain.
-    // Mantenemos text/plain JSON para Auth porque necesitamos leer la respuesta.
     const response = await fetch(scriptUrl, {
       method: 'POST',
+      redirect: 'follow',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({ action: 'auth', pin: pin })
     });
@@ -252,6 +241,45 @@ export const verifyServerPin = async (pin: string): Promise<boolean> => {
 
   } catch (e) {
     return false;
+  }
+};
+
+// --- TEST CONNECTION ---
+export const testConnection = async (): Promise<{success: boolean, message: string}> => {
+  const scriptUrl = getSheetUrl();
+  if (!scriptUrl) return { success: false, message: "No hay URL configurada" };
+
+  try {
+    const response = await fetch(scriptUrl, {
+      method: 'POST',
+      redirect: 'follow',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ 
+        action: 'save', 
+        id: 'TEST-' + Date.now(),
+        type: 'TEST',
+        title: 'Prueba de Conexión',
+        description: 'Si ves esto, la conexión funciona.',
+        category: 'DIGITAL',
+        asset: 'Test',
+        price: '0',
+        location: 'System',
+        createdAt: new Date().toISOString(),
+        contactInfo: 'System',
+        nickname: 'Admin',
+        status: 'PENDING'
+      })
+    });
+    
+    if(!response.ok) return { success: false, message: `Error HTTP: ${response.status}` };
+    
+    const text = await response.text();
+    // Try to parse just to verify it is valid JSON, though we don't need the content
+    try { JSON.parse(text); } catch(e) { return { success: false, message: "La respuesta del script no es JSON válido." }; }
+
+    return { success: true, message: "Conexión exitosa. Revisa si apareció una fila 'TEST' en tu hoja." };
+  } catch (e: any) {
+    return { success: false, message: `Error de Red: ${e.message}` };
   }
 };
 
@@ -289,39 +317,44 @@ export const syncWithGoogleSheets = async (offer: Offer): Promise<boolean> => {
     return true; 
   }
 
-  try {
-    console.log("Enviando datos a Sheets (Form Data)...", offer);
-    
-    // CAMBIO CRÍTICO: Usamos URLSearchParams
-    // Esto hace que Google Script lo reciba en e.parameter de forma fiable
-    const formData = new URLSearchParams();
-    formData.append('action', 'save');
-    formData.append('id', offer.id);
-    formData.append('createdAt', offer.createdAt);
-    formData.append('type', offer.type);
-    formData.append('category', offer.category);
-    formData.append('title', offer.title);
-    formData.append('asset', offer.asset);
-    formData.append('price', offer.price);
-    formData.append('location', offer.location);
-    formData.append('description', offer.description);
-    formData.append('contactInfo', offer.contactInfo);
-    formData.append('status', offer.status);
-    formData.append('nickname', offer.nickname);
+  const payload = {
+    action: 'save',
+    ...offer
+  };
 
+  try {
+    console.log("Enviando a Sheets (Intento JSON):", payload);
+    
+    // Método 1: Standard con redirect (preferido)
+    // Usamos text/plain para evitar Preflight CORS que GAS no soporta bien
     await fetch(scriptUrl, {
       method: 'POST',
-      mode: 'no-cors', // Necesario para enviar datos a GAS sin preflight
+      redirect: 'follow',
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded', 
+        'Content-Type': 'text/plain;charset=utf-8', 
       },
-      body: formData
+      body: JSON.stringify(payload)
     });
     
-    console.log("Envío completado (sin confirmación por no-cors)");
+    console.log("Envío exitoso (o aceptado por el servidor).");
     return true;
   } catch (e) {
-    console.error('Error syncing with Google Sheets', e);
-    return false;
+    console.error('Error Sync (Intento 1):', e);
+    
+    // Método 2: Fallback no-cors (Ciego)
+    // Si el primero falla por CORS estricto, intentamos "a ciegas"
+    try {
+        console.log("Reintentando con modo no-cors...");
+        await fetch(scriptUrl, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify(payload)
+        });
+        return true;
+    } catch (e2) {
+        console.error("Fallo total al sincronizar:", e2);
+        return false;
+    }
   }
 };

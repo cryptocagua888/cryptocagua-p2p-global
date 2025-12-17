@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { saveSheetUrl, getSheetUrl, saveAdminEmail, getAdminEmail, setAdminSession, isAdmin, verifyServerPin, isPinConfigured } from '../services/dataService';
+import { saveSheetUrl, getSheetUrl, saveAdminEmail, getAdminEmail, setAdminSession, isAdmin, verifyServerPin, isPinConfigured, testConnection } from '../services/dataService';
 import { isAiConfigured } from '../services/geminiService';
-import { ClipboardDocumentIcon, CheckIcon, LockClosedIcon, EnvelopeIcon, ArrowRightOnRectangleIcon, GlobeAmericasIcon, ServerIcon, TableCellsIcon, KeyIcon, ExclamationTriangleIcon, ShareIcon, SparklesIcon, SignalIcon, SignalSlashIcon } from '@heroicons/react/24/outline';
+import { ClipboardDocumentIcon, CheckIcon, LockClosedIcon, EnvelopeIcon, ArrowRightOnRectangleIcon, GlobeAmericasIcon, ServerIcon, TableCellsIcon, KeyIcon, ExclamationTriangleIcon, ShareIcon, SparklesIcon, SignalIcon, SignalSlashIcon, BoltIcon } from '@heroicons/react/24/outline';
 
 export const ConfigGuide: React.FC = () => {
   const [url, setUrl] = useState('');
@@ -11,6 +11,8 @@ export const ConfigGuide: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [pin, setPin] = useState('');
   const [loading, setLoading] = useState(false);
+  const [testResult, setTestResult] = useState<{success?: boolean, message?: string} | null>(null);
+  const [testing, setTesting] = useState(false);
   
   // Status flags
   const [hasEnvPin, setHasEnvPin] = useState(false);
@@ -55,6 +57,18 @@ export const ConfigGuide: React.FC = () => {
     setTimeout(() => setSaved(false), 2000);
   };
 
+  const handleTestConnection = async () => {
+    if (!url) {
+        alert("Primero guarda una URL");
+        return;
+    }
+    setTesting(true);
+    setTestResult(null);
+    const result = await testConnection();
+    setTestResult(result);
+    setTesting(false);
+  }
+
   const handleSaveEmail = () => {
     saveAdminEmail(email);
     setEmailSaved(true);
@@ -85,28 +99,23 @@ export const ConfigGuide: React.FC = () => {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     
-    // --- LÓGICA HÍBRIDA: INTENTAR LEER FORM DATA O JSON ---
-    var data = null;
-    
-    // 1. Intento: Datos de formulario (URLSearchParams)
-    if (e.parameter && e.parameter.action) {
-       data = e.parameter;
-    } 
-    // 2. Intento: JSON Raw (fallback)
-    else if (e.postData && e.postData.contents) {
-       try {
-         data = JSON.parse(e.postData.contents);
-       } catch(err) {
-         // Si falla, data sigue null
-       }
+    // --- LÓGICA ROBUSTA PARA LEER EL CUERPO ---
+    var data;
+    try {
+      // 1. Intentamos parsear JSON directamente (Lo más común)
+      data = JSON.parse(e.postData.contents);
+    } catch(err) {
+      // 2. Si falla, verificamos si llegó como parámetro
+      data = e.parameter;
     }
 
-    if (!data) {
-       return ContentService.createTextOutput(JSON.stringify({ "error": "No data received" }))
+    // Validación básica
+    if (!data || (!data.action && !data.id)) {
+       return ContentService.createTextOutput(JSON.stringify({ "error": "No valid data received", "raw": e.postData.contents }))
         .setMimeType(ContentService.MimeType.JSON);
     }
 
-    // --- CONFIGURAR HOJA ---
+    // --- CONFIGURAR HOJA SI NO EXISTE ---
     var sheet = ss.getSheetByName("Ofertas");
     if (!sheet) {
       sheet = ss.insertSheet("Ofertas");
@@ -126,7 +135,8 @@ export const ConfigGuide: React.FC = () => {
         configSheet.getRange("B1").setValue("2024");
       }
       var storedPin = configSheet.getRange("B1").getValue().toString();
-      return ContentService.createTextOutput(JSON.stringify({ "success": (data.pin.toString() === storedPin) }))
+      var isMatch = (data.pin && data.pin.toString() === storedPin);
+      return ContentService.createTextOutput(JSON.stringify({ "success": isMatch }))
         .setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -134,6 +144,7 @@ export const ConfigGuide: React.FC = () => {
     if (data.action === 'read') {
       var rows = sheet.getDataRange().getValues();
       var offers = [];
+      // Empezamos en 1 para saltar cabeceras
       for (var i = 1; i < rows.length; i++) {
          var r = rows[i];
          if(r[0] && r[0] !== '') { 
@@ -157,11 +168,13 @@ export const ConfigGuide: React.FC = () => {
           break;
         }
       }
-      return ContentService.createTextOutput("Updated").setMimeType(ContentService.MimeType.TEXT);
+      return ContentService.createTextOutput(JSON.stringify({ "success": true }))
+        .setMimeType(ContentService.MimeType.JSON);
     }
 
-    // --- ACCIÓN: SAVE ---
-    if (data.action === 'save') {
+    // --- ACCIÓN: SAVE (DEFAULT) ---
+    // Si tiene ID y fecha, asumimos que es guardar
+    if (data.id && data.createdAt) {
       sheet.appendRow([
         data.id, 
         data.createdAt, 
@@ -181,7 +194,7 @@ export const ConfigGuide: React.FC = () => {
         .setMimeType(ContentService.MimeType.JSON);
     }
     
-    return ContentService.createTextOutput(JSON.stringify({ "error": "Unknown action" }))
+    return ContentService.createTextOutput(JSON.stringify({ "error": "Unknown action or invalid data structure" }))
         .setMimeType(ContentService.MimeType.JSON);
 
   } catch(e) {
@@ -329,6 +342,32 @@ export const ConfigGuide: React.FC = () => {
                 {saved ? <CheckIcon className="h-5 w-5" /> : 'Guardar'}
               </button>
             </div>
+            
+            <div className="mt-4 pt-4 border-t border-white/5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                 <div>
+                    <h4 className="text-sm font-bold text-white">Prueba de Conexión</h4>
+                    <p className="text-xs text-gray-400">Esto enviará una fila de prueba a tu hoja.</p>
+                 </div>
+                 <button 
+                   onClick={handleTestConnection} 
+                   disabled={testing || !isUrlConfigured}
+                   className="flex items-center px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-bold transition-colors disabled:opacity-50"
+                 >
+                    {testing ? (
+                        <ArrowPathIcon className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                        <BoltIcon className="h-4 w-4 mr-2 text-yellow-400" />
+                    )}
+                    {testing ? 'Probando...' : 'Probar Conexión'}
+                 </button>
+            </div>
+            
+            {testResult && (
+                <div className={`mt-3 p-3 rounded-lg text-xs font-mono border ${testResult.success ? 'bg-green-500/10 border-green-500/30 text-green-400' : 'bg-red-500/10 border-red-500/30 text-red-400'}`}>
+                    {testResult.success && <CheckIcon className="h-4 w-4 inline mr-1" />}
+                    {testResult.message}
+                </div>
+            )}
           </div>
 
           {/* MAGIC LINK SECTION */}
@@ -364,14 +403,39 @@ export const ConfigGuide: React.FC = () => {
           <div className="bg-slate-800/50 p-6 rounded-xl border border-white/5">
              <h3 className="text-lg font-semibold text-primary-400 mb-4 flex items-center">
                 <TableCellsIcon className="h-5 w-5 mr-2" />
-                Estructura de la Hoja
+                Estructura de la Hoja (Base de Datos)
             </h3>
-            <p className="text-sm text-gray-300 mb-4">
-                El nuevo script creará automáticamente una hoja llamada <strong>"Ofertas"</strong>. Asegúrate de tener permisos de edición.
+            
+            <div className="bg-green-900/20 border border-green-500/30 rounded-lg p-4 mb-4">
+                <p className="text-sm text-gray-200 font-bold mb-3">
+                    El sistema requiere exactamente 2 hojas con estos nombres (sin comillas):
+                </p>
+                <div className="flex gap-2 items-end">
+                    <div className="bg-white text-green-900 px-4 py-1.5 rounded-t-lg font-bold text-xs border-t-4 border-green-600 shadow-lg translate-y-[1px] relative z-10">
+                        Ofertas
+                    </div>
+                    <div className="bg-slate-700 text-gray-400 px-4 py-1.5 rounded-t-lg font-medium text-xs hover:bg-slate-600 border-t-4 border-slate-600">
+                        Config
+                    </div>
+                    <div className="bg-slate-600/30 flex-1 h-[1px] mb-[1px]"></div>
+                </div>
+                <div className="bg-white p-3 rounded-b-lg rounded-tr-lg border-t border-green-600 shadow-sm relative z-0">
+                   <div className="flex gap-1 overflow-x-auto text-[10px] font-mono text-gray-500 whitespace-nowrap pb-1">
+                      <span className="bg-gray-100 border px-1">A:ID</span>
+                      <span className="bg-gray-100 border px-1">B:FECHA</span>
+                      <span className="bg-gray-100 border px-1">C:TIPO</span>
+                      <span className="bg-gray-100 border px-1">D:CATEGORIA</span>
+                      <span className="bg-gray-100 border px-1">...</span>
+                   </div>
+                </div>
+            </div>
+
+            <p className="text-xs text-gray-400 mb-2">
+                Columnas requeridas en la hoja <strong>"Ofertas"</strong>:
             </p>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 {headers.map((h) => (
-                    <div key={h} className="bg-slate-900 border border-slate-700 p-2 rounded text-xs font-mono text-center text-gray-400">
+                    <div key={h} className="bg-slate-900 border border-slate-700 p-2 rounded text-[10px] font-mono text-center text-gray-400">
                         {h}
                     </div>
                 ))}
@@ -380,7 +444,7 @@ export const ConfigGuide: React.FC = () => {
 
           {/* Script Code */}
           <div className="bg-slate-800/50 p-6 rounded-xl border border-white/5">
-            <h3 className="text-lg font-semibold text-primary-400 mb-4">Código Backend (Mejorado v3)</h3>
+            <h3 className="text-lg font-semibold text-primary-400 mb-4">Código Backend (v4 - JSON)</h3>
             <div className="relative bg-black/50 rounded-lg p-4 font-mono text-xs text-green-400 overflow-x-auto border border-gray-700">
                <button onClick={copyCode} className="absolute top-2 right-2 text-gray-400 hover:text-white bg-slate-700 p-1.5 rounded-md">
                  <ClipboardDocumentIcon className="h-4 w-4" />
@@ -396,4 +460,10 @@ export const ConfigGuide: React.FC = () => {
       </div>
     </div>
   );
+}
+
+function ArrowPathIcon({className}: {className?: string}) {
+    return <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+    </svg>
 }
