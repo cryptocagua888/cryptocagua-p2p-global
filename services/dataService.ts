@@ -48,48 +48,56 @@ export const getOffers = (): Offer[] => {
 };
 
 // --- CORE SYNC FUNCTION ---
-const sendToSheet = async (payload: any): Promise<boolean> => {
+const sendToSheet = async (payload: any): Promise<{success: boolean, errorType?: string}> => {
   const scriptUrl = getSheetUrl();
-  if (!scriptUrl) return false;
+  if (!scriptUrl) return { success: false, errorType: 'NO_URL' };
 
   try {
-    // IMPORTANTE: No usar mode: 'cors' explícito.
-    // Al usar text/plain y no poner mode, el navegador hace una "Simple Request".
-    // Esto evita el "Preflight" (OPTIONS) que Google Script suele bloquear.
+    // CAMBIO TÉCNICO: Usar URLSearchParams (Form Data)
+    // Esto es más robusto para Google Scripts que el JSON crudo
+    const formData = new URLSearchParams();
+    Object.keys(payload).forEach(key => {
+        const value = payload[key];
+        formData.append(key, typeof value === 'object' ? JSON.stringify(value) : String(value));
+    });
+
+    // Petición Simple (Simple Request) que evita Preflight en muchos casos
     const response = await fetch(scriptUrl, {
       method: 'POST',
       redirect: 'follow',
       headers: {
-        'Content-Type': 'text/plain;charset=utf-8', 
+        "Content-Type": "application/x-www-form-urlencoded",
       },
-      body: JSON.stringify(payload)
+      body: formData
     });
 
     if (!response.ok) {
-        // Intentar leer el error si es posible, o asumir error de red
-        const txt = await response.text().catch(() => "Error desconocido");
-        console.error("Server Error:", txt);
-        return false;
+        return { success: false, errorType: `HTTP_${response.status}` };
     }
 
-    // A veces Google devuelve HTML de error (como 404 de página de google), verificar si es JSON
     const text = await response.text();
+    
+    // Detección de página de Login de Google (Error de Permisos)
+    if (text.trim().startsWith("<") || text.includes("<!DOCTYPE html>")) {
+        console.error("HTML Response detected (Permission Error)");
+        return { success: false, errorType: 'HTML_RESPONSE' };
+    }
+
     try {
         const json = JSON.parse(text);
         if (json.error) {
             console.error("Script Error:", json.error);
-            return false;
+            return { success: false, errorType: 'SCRIPT_ERROR' };
         }
     } catch(e) {
-        // Si no es JSON, es un error de Google (ej: script no encontrado o permisos)
-        console.error("Respuesta no válida del script:", text.substring(0, 100));
-        return false;
+        // Si no es JSON ni HTML obvio, algo raro pasa, pero quizás funcionó.
+        console.warn("Non-JSON response:", text.substring(0, 50));
     }
     
-    return true;
+    return { success: true };
   } catch (e) {
-    console.error("Error de conexión:", e);
-    return false;
+    console.error("Connection Error:", e);
+    return { success: false, errorType: 'NETWORK_ERROR' };
   }
 };
 
@@ -101,11 +109,15 @@ export const fetchOffers = async (): Promise<Offer[]> => {
 
   try {
     console.log("📥 Descargando datos...");
+    // También usamos form data para lectura
+    const formData = new URLSearchParams();
+    formData.append('action', 'read');
+
     const response = await fetch(scriptUrl, {
       method: 'POST',
       redirect: 'follow',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'read' })
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: formData
     });
 
     if (!response.ok) throw new Error("Error HTTP " + response.status);
@@ -154,7 +166,8 @@ export const addOffer = (offer: Omit<Offer, 'id' | 'createdAt' | 'status' | 'rep
 
 export const syncWithGoogleSheets = async (offer: Offer): Promise<boolean> => {
   const payload = { action: 'save', ...offer };
-  return await sendToSheet(payload);
+  const result = await sendToSheet(payload);
+  return result.success;
 };
 
 export const testConnection = async (): Promise<{success: boolean, message: string}> => {
@@ -179,18 +192,24 @@ export const testConnection = async (): Promise<{success: boolean, message: stri
 
   // 1. Intentar Escribir
   console.log("1. Enviando datos de prueba...");
-  const sent = await sendToSheet(payload);
+  const sentResult = await sendToSheet(payload);
   
-  if (!sent) {
-      return { 
-          success: false, 
-          message: "Falló el envío. Verifica: 1. URL termine en /exec. 2. Permisos 'Cualquier persona' (Anyone)." 
-      };
+  if (!sentResult.success) {
+      // Diagnóstico detallado
+      if (sentResult.errorType === 'HTML_RESPONSE') {
+          return { success: false, message: "❌ ERROR DE PERMISOS: El script devolvió una página de Login. Debes configurar 'Quién tiene acceso' a 'Cualquier persona' (Anyone)." };
+      }
+      if (sentResult.errorType === 'NETWORK_ERROR') {
+          // Si falla la red, puede ser CORS, pero intentamos leer de todos modos por si acaso fue un "falso negativo"
+          console.warn("Error de red en escritura, intentando leer de todas formas...");
+      } else {
+          return { success: false, message: `Falló el envío (${sentResult.errorType}). Revisa la URL.` };
+      }
   }
 
   // 2. Intentar Leer de vuelta (Verificación real)
-  console.log("2. Esperando propagación (2s)...");
-  await new Promise(r => setTimeout(r, 2000));
+  console.log("2. Esperando propagación (2.5s)...");
+  await new Promise(r => setTimeout(r, 2500));
   
   console.log("3. Intentando leer los datos...");
   try {
@@ -198,13 +217,15 @@ export const testConnection = async (): Promise<{success: boolean, message: stri
       const found = remoteData.find(o => o.id === testId);
       
       if (found) {
-          // Limpiar el dato de prueba (blind delete)
-          deleteOffer(testId);
+          deleteOffer(testId); // Limpiar
           return { 
               success: true, 
               message: `¡CONEXIÓN EXITOSA! ✅ Se escribió y leyó el ID ${testId} correctamente.` 
           };
       } else {
+          if (!sentResult.success) {
+             return { success: false, message: "No se pudo conectar. Posible error de CORS o URL incorrecta." };
+          }
           return { 
               success: false, 
               message: "El servidor respondió OK, pero el dato no apareció. Asegúrate de haber hecho 'Nueva Implementación' en el Script." 
