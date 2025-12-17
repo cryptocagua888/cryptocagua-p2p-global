@@ -105,16 +105,21 @@ export const ConfigGuide: React.FC = () => {
     alert("¡Link Mágico copiado! Envíalo a tus usuarios.");
   };
 
-  const appScriptCode = `// --- CÓDIGO v11 (DIAGNÓSTICO) ---
-// Soporta JSON y Form Data. Devuelve error detallado.
+  const appScriptCode = `// --- CÓDIGO v12 (CON SETUP) ---
 
-function doGet(e) {
-  return handleRequest(e);
+// 1. EJECUTA ESTA FUNCIÓN PRIMERO EN EL EDITOR
+function setup() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName("Ofertas");
+  if (!sheet) {
+    sheet = ss.insertSheet("Ofertas");
+    sheet.appendRow(["ID", "FECHA", "TIPO", "CATEGORIA", "TITULO", "ACTIVO", "PRECIO", "UBICACION", "DESCRIPCION", "CONTACTO", "ESTADO", "NICKNAME"]);
+  }
+  Logger.log("¡Permisos Aceptados! Hoja configurada correctamente: " + ss.getName());
 }
 
-function doPost(e) {
-  return handleRequest(e);
-}
+function doGet(e) { return handleRequest(e); }
+function doPost(e) { return handleRequest(e); }
 
 function handleRequest(e) {
   var lock = LockService.getScriptLock();
@@ -124,48 +129,30 @@ function handleRequest(e) {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var data = null;
 
-    // 1. Intentar Form Parameters (application/x-www-form-urlencoded)
-    if (e.parameter && e.parameter.action) {
-       data = e.parameter;
-    }
-    
-    // 2. Intentar JSON Body (Si no hubo parametros)
+    if (e.parameter && e.parameter.action) data = e.parameter;
     if (!data && e.postData && e.postData.contents) {
-      try { 
-         data = JSON.parse(e.postData.contents); 
-      } catch(err) {
-         // Silencioso, intentaremos otros métodos
-      }
+      try { data = JSON.parse(e.postData.contents); } catch(err) {}
     }
 
     if (!data) {
-       // Debug Info para el usuario
-       var debug = {
-          "error": "No data received (v11)",
-          "params_keys": e.parameter ? Object.keys(e.parameter) : [],
-          "post_type": e.postData ? e.postData.type : "none"
-       };
-       return ContentService.createTextOutput(JSON.stringify(debug)).setMimeType(ContentService.MimeType.JSON);
+       return ContentService.createTextOutput(JSON.stringify({"error": "No data received"})).setMimeType(ContentService.MimeType.JSON);
     }
 
     var sheet = ss.getSheetByName("Ofertas");
-    if (!sheet) {
-      sheet = ss.insertSheet("Ofertas");
-      sheet.appendRow(["ID", "FECHA", "TIPO", "CATEGORIA", "TITULO", "ACTIVO", "PRECIO", "UBICACION", "DESCRIPCION", "CONTACTO", "ESTADO", "NICKNAME"]);
+    if (!sheet) { // Auto-creación si falla el setup manual
+       sheet = ss.insertSheet("Ofertas");
+       sheet.appendRow(["ID", "FECHA", "TIPO", "CATEGORIA", "TITULO", "ACTIVO", "PRECIO", "UBICACION", "DESCRIPCION", "CONTACTO", "ESTADO", "NICKNAME"]);
     }
 
-    // --- ACCIONES ---
-    
     if (data.action === 'save') {
       if (!data.id) return ContentService.createTextOutput(JSON.stringify({ "error": "Missing ID" })).setMimeType(ContentService.MimeType.JSON);
-      
       var date = data.createdAt || new Date().toISOString();
       sheet.appendRow([
         data.id, date, data.type || 'TEST', data.category, data.title, 
         data.asset, data.price, data.location, data.description, 
         data.contactInfo, data.status || 'PENDING', data.nickname
       ]);
-      return ContentService.createTextOutput(JSON.stringify({ "success": true, "written": true })).setMimeType(ContentService.MimeType.JSON);
+      return ContentService.createTextOutput(JSON.stringify({ "success": true })).setMimeType(ContentService.MimeType.JSON);
     }
     
     if (data.action === 'read') {
@@ -188,10 +175,10 @@ function handleRequest(e) {
           for (var i = 0; i < rows.length; i++) {
             if (String(rows[i][0]) === String(data.id)) {
               sheet.deleteRow(i + 1);
-              return ContentService.createTextOutput(JSON.stringify({ "success": true, "action": "deleted" })).setMimeType(ContentService.MimeType.JSON);
+              return ContentService.createTextOutput(JSON.stringify({ "success": true })).setMimeType(ContentService.MimeType.JSON);
             }
           }
-          return ContentService.createTextOutput(JSON.stringify({ "success": false, "error": "ID not found" })).setMimeType(ContentService.MimeType.JSON);
+          return ContentService.createTextOutput(JSON.stringify({ "success": false })).setMimeType(ContentService.MimeType.JSON);
     }
     
     if (data.action === 'updateStatus') {
@@ -199,15 +186,15 @@ function handleRequest(e) {
           for (var i = 0; i < rows.length; i++) {
             if (String(rows[i][0]) === String(data.id)) {
               sheet.getRange(i + 1, 11).setValue(data.status);
-              return ContentService.createTextOutput(JSON.stringify({ "success": true, "action": "updated" })).setMimeType(ContentService.MimeType.JSON);
+              return ContentService.createTextOutput(JSON.stringify({ "success": true })).setMimeType(ContentService.MimeType.JSON);
             }
           }
     }
 
-    return ContentService.createTextOutput(JSON.stringify({ "error": "Unknown action: " + data.action })).setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(JSON.stringify({ "error": "Unknown action" })).setMimeType(ContentService.MimeType.JSON);
 
   } catch(e) {
-    return ContentService.createTextOutput(JSON.stringify({ "error": "EXCEPTION: " + e.toString() })).setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(JSON.stringify({ "error": e.toString() })).setMimeType(ContentService.MimeType.JSON);
   } finally {
     try { lock.releaseLock(); } catch(e) {}
   }
@@ -215,7 +202,7 @@ function handleRequest(e) {
 
   const copyCode = () => {
     navigator.clipboard.writeText(appScriptCode);
-    alert("¡Código v11 Copiado!");
+    alert("¡Código v12 Copiado!");
   };
 
   const headers = [
@@ -417,22 +404,19 @@ function handleRequest(e) {
           <div className="bg-slate-800/50 p-6 rounded-xl border border-white/5">
             <h3 className="text-lg font-semibold text-primary-400 mb-4 flex items-center">
                 <ServerIcon className="h-5 w-5 mr-2" />
-                Código Backend (v11 - Diagnóstico)
+                Código Backend (v12 - Autorización)
             </h3>
             
             <div className="bg-yellow-500/10 border border-yellow-500/20 p-3 rounded-lg mb-4 flex flex-col gap-2">
                <div className="flex items-start">
                     <RocketLaunchIcon className="h-5 w-5 text-yellow-500 mr-2 flex-shrink-0 mt-0.5" />
                     <div className="text-xs text-yellow-200">
-                        <span className="font-bold">¡PASOS OBLIGATORIOS!</span><br/>
-                        1. Pega este código nuevo.<br/>
-                        2. <strong>Implementar &rarr; Nueva Implementación.</strong><br/>
+                        <span className="font-bold">¡SOLUCIÓN AL ERROR DE PERMISOS!</span><br/>
+                        1. Copia este código v12.<br/>
+                        2. Pégalo en el editor de Google Apps Script.<br/>
+                        3. <strong className="text-white bg-red-600 px-1 rounded">IMPORTANTE:</strong> Selecciona la función <code>setup</code> en el menú superior del editor y dale a <strong>▷ Ejecutar</strong>. Acepta los permisos.<br/>
+                        4. Luego haz la <strong>Nueva Implementación</strong> como siempre.
                     </div>
-               </div>
-               <div className="bg-black/40 p-2 rounded text-[10px] text-gray-300 font-mono mt-1">
-                  <strong>Configuración Exacta:</strong><br/>
-                  - Ejecutar como: <strong>Yo (Me)</strong> &larr; (Muy importante)<br/>
-                  - Quién tiene acceso: <strong>Cualquier persona (Anyone)</strong>
                </div>
             </div>
 

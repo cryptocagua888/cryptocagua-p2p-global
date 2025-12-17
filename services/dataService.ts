@@ -85,7 +85,6 @@ const sendToSheet = async (payload: any): Promise<{success: boolean, errorType?:
         const json = JSON.parse(text);
         if (json.error) {
             console.error("Script Error:", json.error);
-            // Capturamos el mensaje exacto del script
             return { success: false, errorType: 'SCRIPT_ERROR', errorMessage: json.error };
         }
     } catch(e) {
@@ -196,7 +195,11 @@ export const testConnection = async (): Promise<{success: boolean, message: stri
           return { success: false, message: "❌ ERROR PERMISOS: El script devolvió Login. Configura 'Quién tiene acceso' a 'Cualquier persona' (Anyone)." };
       }
       if (sentResult.errorType === 'SCRIPT_ERROR') {
-          return { success: false, message: `❌ ERROR SCRIPT: "${sentResult.errorMessage}". (¿Actualizaste el código a v11 y creaste Nueva Implementación?)` };
+          const err = sentResult.errorMessage || "";
+          if (err.includes("permission") || err.includes("SpreadsheetApp")) {
+              return { success: false, message: "🚨 FALTA AUTORIZACIÓN: No has ejecutado el script manualmente. Ve al editor de Google Script, selecciona la función 'setup' y dale a 'Ejecutar' para aceptar los permisos." };
+          }
+          return { success: false, message: `❌ ERROR SCRIPT: "${err}".` };
       }
       if (sentResult.errorType === 'NETWORK_ERROR') {
           console.warn("Error de red en escritura, intentando leer de todas formas...", sentResult.errorMessage);
