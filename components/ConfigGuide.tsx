@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { saveSheetUrl, getSheetUrl, saveAdminEmail, getAdminEmail, setAdminSession, isAdmin, verifyServerPin } from '../services/dataService';
-import { ClipboardDocumentIcon, CheckIcon, LockClosedIcon, EnvelopeIcon, ArrowRightOnRectangleIcon, GlobeAmericasIcon, ServerIcon, TableCellsIcon, KeyIcon } from '@heroicons/react/24/outline';
+import { ClipboardDocumentIcon, CheckIcon, LockClosedIcon, EnvelopeIcon, ArrowRightOnRectangleIcon, GlobeAmericasIcon, ServerIcon, TableCellsIcon, KeyIcon, ExclamationTriangleIcon, ShareIcon, SparklesIcon } from '@heroicons/react/24/outline';
 
 export const ConfigGuide: React.FC = () => {
   const [url, setUrl] = useState('');
@@ -10,23 +10,12 @@ export const ConfigGuide: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [pin, setPin] = useState('');
   const [loading, setLoading] = useState(false);
-  const [isEnvPinSet, setIsEnvPinSet] = useState(false);
   
   useEffect(() => {
     setUrl(getSheetUrl());
     setEmail(getAdminEmail());
     if (isAdmin()) {
       setIsAuthenticated(true);
-    }
-
-    // Static Safe check for Env Var
-    try {
-      // @ts-ignore
-      if (typeof process !== 'undefined' && process.env.ADMIN_PIN) {
-        setIsEnvPinSet(true);
-      }
-    } catch (e) {
-      // Ignore ReferenceError
     }
   }, []);
 
@@ -40,7 +29,7 @@ export const ConfigGuide: React.FC = () => {
       setIsAuthenticated(true);
       setAdminSession(true);
     } else {
-      alert('PIN Incorrecto');
+      alert('PIN Incorrecto. Verifique su ADMIN_PIN en Vercel o el PIN en la Hoja de Cálculo.');
       setPin('');
     }
     setLoading(false);
@@ -62,6 +51,23 @@ export const ConfigGuide: React.FC = () => {
     saveAdminEmail(email);
     setEmailSaved(true);
     setTimeout(() => setEmailSaved(false), 2000);
+  };
+
+  // Generate Magic Link
+  const getMagicLink = () => {
+    if (!url) return '';
+    const encoded = btoa(url);
+    return `${window.location.origin}/?setup=${encoded}`;
+  };
+
+  const copyMagicLink = () => {
+    const link = getMagicLink();
+    if (!link) {
+        alert("Primero configura y guarda la URL del Script.");
+        return;
+    }
+    navigator.clipboard.writeText(link);
+    alert("¡Link Mágico copiado! Envíalo a tus usuarios.");
   };
 
   const appScriptCode = `function doPost(e) {
@@ -151,20 +157,10 @@ export const ConfigGuide: React.FC = () => {
         <div className="glass-panel p-8 rounded-2xl max-w-sm w-full text-center">
           <div className="mx-auto bg-slate-800 w-16 h-16 rounded-full flex items-center justify-center mb-4 text-primary-500 relative">
             <LockClosedIcon className="h-8 w-8" />
-            {isEnvPinSet && (
-                <div className="absolute top-0 right-0 h-4 w-4 bg-green-500 rounded-full border-2 border-slate-800" title="ADMIN_PIN activo"></div>
-            )}
           </div>
           <h2 className="text-xl font-bold text-white mb-2">Acceso Administrativo</h2>
           <p className="text-gray-400 text-sm mb-6 flex items-center justify-center gap-1">
-            {isEnvPinSet ? (
-                <>
-                   <ServerIcon className="h-4 w-4" />
-                   Seguridad gestionada por Vercel
-                </>
-            ) : (
-                'Gestionado vía Google Sheets'
-            )}
+             Seguridad gestionada por variables de entorno
           </p>
           <form onSubmit={handleLogin}>
             <input
@@ -185,15 +181,20 @@ export const ConfigGuide: React.FC = () => {
             </button>
           </form>
           
-          <div className="mt-6 text-[10px] text-gray-500 bg-slate-900/50 p-3 rounded-lg border border-slate-700">
-             <p className="font-bold text-gray-400 mb-1">¿Olvidaste tu PIN?</p>
-             <p>1. Usa el PIN de Rescate: <strong className="text-white">1234</strong></p>
-             <p className="mt-1">2. O el configurado en Vercel (Variable: ADMIN_PIN)</p>
+          <div className="mt-6 text-[10px] text-gray-500 bg-slate-900/50 p-3 rounded-lg border border-slate-700 text-left">
+             <p className="font-bold text-gray-300 mb-1 border-b border-gray-700 pb-1">¿Qué PIN debo usar?</p>
+             <ul className="space-y-1 mt-1">
+               <li><span className="text-green-500 font-bold">1. Sin Conexión:</span> Usa la variable <code>ADMIN_PIN</code> configurada en Vercel.</li>
+               <li><span className="text-blue-500 font-bold">2. Conectado:</span> Usa el PIN definido en la Hoja de Cálculo (Celda B1).</li>
+               <li><span className="text-red-500 font-bold">3. Nota:</span> El PIN "1234" ya no está disponible por seguridad.</li>
+             </ul>
           </div>
         </div>
       </div>
     );
   }
+
+  const isUrlConfigured = url && url.length > 10;
 
   return (
     <div className="max-w-4xl mx-auto py-10 px-4 pb-32">
@@ -232,62 +233,18 @@ export const ConfigGuide: React.FC = () => {
               <KeyIcon className="h-5 w-5 mr-2" />
               Gestión del PIN
             </h3>
-            {isEnvPinSet ? (
-                <div className="text-sm text-green-400 flex items-center bg-green-900/20 p-3 rounded-lg border border-green-500/30">
-                    <CheckIcon className="h-5 w-5 mr-2" />
-                    El PIN está siendo gestionado seguramente por Vercel.
-                </div>
-            ) : (
-                <p className="text-sm text-gray-300">
-                Para cambiar tu PIN de acceso, ve a tu Hoja de Cálculo de Google:
-                <br/>
-                1. Abre la pestaña llamada <strong>Config</strong> (si no existe, se creará al usar el sistema).
-                <br/>
-                2. Cambia el número en la celda <strong>B1</strong>.
-                </p>
-            )}
-          </div>
-
-          <div className="border-t border-white/10 my-6"></div>
-          
-          <h3 className="text-xl font-bold text-white mb-4">Base de Datos P2P</h3>
-
-          {/* New Step 1: Sheet Structure */}
-          <div className="bg-slate-800/50 p-6 rounded-xl border border-white/5">
-            <h3 className="text-lg font-semibold text-primary-400 mb-4 flex items-center">
-                <TableCellsIcon className="h-5 w-5 mr-2" />
-                Paso 1: Estructura de la Hoja (Headers)
-            </h3>
-            <p className="text-sm text-gray-300 mb-4">
-                En tu Google Sheet, en la <strong>Fila 1</strong>, escribe estos títulos en orden (Columnas A - L) para mantener el orden visual:
-            </p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                {headers.map((h) => (
-                    <div key={h} className="bg-slate-900 border border-slate-700 p-2 rounded text-xs font-mono text-center text-gray-400">
-                        {h}
-                    </div>
-                ))}
+            <div className="text-sm text-gray-300">
+               <p className="mb-2">Actualmente tu PIN se gestiona desde Google Sheets o Vercel:</p>
+               <ol className="list-decimal list-inside space-y-1 text-gray-400">
+                  <li><strong>Modo Offline:</strong> Variable de entorno <code>ADMIN_PIN</code>.</li>
+                  <li><strong>Modo Online:</strong> Celda <strong>B1</strong> en la hoja "Config".</li>
+               </ol>
             </div>
-          </div>
-
-          {/* Script Code */}
-          <div className="bg-slate-800/50 p-6 rounded-xl border border-white/5">
-            <h3 className="text-lg font-semibold text-primary-400 mb-4">Paso 2: Actualizar Código Backend</h3>
-            <p className="text-sm text-gray-300 mb-2">Este nuevo código está ajustado para respetar los encabezados de la Fila 1.</p>
-            <div className="relative bg-black/50 rounded-lg p-4 font-mono text-xs text-green-400 overflow-x-auto border border-gray-700">
-               <button onClick={copyCode} className="absolute top-2 right-2 text-gray-400 hover:text-white bg-slate-700 p-1.5 rounded-md">
-                 <ClipboardDocumentIcon className="h-4 w-4" />
-               </button>
-               <pre>{appScriptCode}</pre>
-            </div>
-            <p className="text-xs text-yellow-500 mt-2">
-                ⚠️ Recuerda: Después de pegar, haz clic en "Implementar" - "Nueva implementación" en Google Apps Script.
-            </p>
           </div>
 
           {/* Connect */}
           <div className="bg-slate-800/50 p-6 rounded-xl border border-white/5">
-            <h3 className="text-lg font-semibold text-primary-400 mb-4">Paso 3: Conexión Local (Admin)</h3>
+            <h3 className="text-lg font-semibold text-primary-400 mb-4">Paso 1: Conexión (URL del Script)</h3>
             <div className="flex gap-3">
               <input 
                 type="text" 
@@ -302,22 +259,62 @@ export const ConfigGuide: React.FC = () => {
             </div>
           </div>
 
-          {/* GLOBAL CONFIG INSTRUCTION */}
-          <div className="bg-gradient-to-r from-emerald-900/60 to-teal-900/60 p-6 rounded-xl border border-emerald-500/50 shadow-lg">
-             <div className="flex items-start gap-4">
-                <div className="bg-emerald-500 p-3 rounded-full text-white">
-                   <GlobeAmericasIcon className="h-6 w-6" />
-                </div>
-                <div>
-                   <h3 className="text-lg font-bold text-white mb-2">Conexión Global Activa</h3>
-                   <p className="text-emerald-200 text-sm">
-                      Tu aplicación ya está conectada a la base de datos global. Los usuarios verán las ofertas automáticamente.
-                   </p>
-                   <div className="mt-3 inline-flex items-center px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-bold border border-emerald-500/30">
-                      <CheckIcon className="h-3 w-3 mr-1" /> URL Configurada en el Código
-                   </div>
-                </div>
+          {/* MAGIC LINK SECTION */}
+          {isUrlConfigured && (
+             <div className="bg-gradient-to-r from-violet-900/60 to-purple-900/60 p-6 rounded-xl border border-violet-500/50 shadow-lg relative overflow-hidden group">
+                 <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                    <SparklesIcon className="h-24 w-24 text-violet-400" />
+                 </div>
+                 <div className="relative z-10">
+                    <div className="flex items-center gap-2 mb-2 text-violet-300">
+                        <ShareIcon className="h-5 w-5" />
+                        <h3 className="text-lg font-bold text-white">Compartir Acceso (Link Mágico)</h3>
+                    </div>
+                    <p className="text-sm text-gray-300 mb-4 max-w-lg">
+                       ¡Olvídate de explicarle a los usuarios cómo configurar la app! Copia este link y envíaselo. Al abrirlo, <strong>se conectarán automáticamente a tu base de datos</strong>.
+                    </p>
+                    <button 
+                       onClick={copyMagicLink}
+                       className="flex items-center bg-white text-violet-900 font-bold px-5 py-3 rounded-lg hover:bg-gray-100 transition-colors shadow-lg"
+                    >
+                       <ClipboardDocumentIcon className="h-5 w-5 mr-2" />
+                       Copiar Link Mágico
+                    </button>
+                 </div>
              </div>
+          )}
+
+          <div className="border-t border-white/10 my-6"></div>
+          
+          <h3 className="text-xl font-bold text-white mb-4">Guía Técnica</h3>
+
+          {/* New Step 1: Sheet Structure */}
+          <div className="bg-slate-800/50 p-6 rounded-xl border border-white/5">
+             <h3 className="text-lg font-semibold text-primary-400 mb-4 flex items-center">
+                <TableCellsIcon className="h-5 w-5 mr-2" />
+                Estructura de la Hoja
+            </h3>
+            <p className="text-sm text-gray-300 mb-4">
+                En tu Google Sheet, en la <strong>Fila 1</strong>, escribe estos títulos en orden (Columnas A - L):
+            </p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                {headers.map((h) => (
+                    <div key={h} className="bg-slate-900 border border-slate-700 p-2 rounded text-xs font-mono text-center text-gray-400">
+                        {h}
+                    </div>
+                ))}
+            </div>
+          </div>
+
+          {/* Script Code */}
+          <div className="bg-slate-800/50 p-6 rounded-xl border border-white/5">
+            <h3 className="text-lg font-semibold text-primary-400 mb-4">Código Backend</h3>
+            <div className="relative bg-black/50 rounded-lg p-4 font-mono text-xs text-green-400 overflow-x-auto border border-gray-700">
+               <button onClick={copyCode} className="absolute top-2 right-2 text-gray-400 hover:text-white bg-slate-700 p-1.5 rounded-md">
+                 <ClipboardDocumentIcon className="h-4 w-4" />
+               </button>
+               <pre>{appScriptCode}</pre>
+            </div>
           </div>
 
         </div>

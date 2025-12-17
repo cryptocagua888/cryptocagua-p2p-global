@@ -1,13 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Navbar } from './components/Navbar';
 import { Marketplace } from './components/Marketplace';
 import { CreateOffer } from './components/CreateOffer';
 import { ConfigGuide } from './components/ConfigGuide';
 import { ViewState } from './types';
-import { ArrowRightIcon, ShieldCheckIcon, UserGroupIcon, BoltIcon } from '@heroicons/react/24/outline';
+import { processMagicLink } from './services/dataService';
+import { ArrowRightIcon, ShieldCheckIcon, UserGroupIcon, BoltIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
 
 function App() {
   const [currentView, setCurrentView] = useState<ViewState['current']>('HOME');
+  const [magicLinkApplied, setMagicLinkApplied] = useState(false);
+
+  useEffect(() => {
+    // Check if the URL contains a magic configuration link
+    const success = processMagicLink();
+    if (success) {
+      setMagicLinkApplied(true);
+      // Remove notification after 5 seconds
+      setTimeout(() => setMagicLinkApplied(false), 5000);
+    }
+  }, []);
 
   const renderView = () => {
     switch (currentView) {
@@ -152,8 +164,20 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-background text-gray-100 font-sans selection:bg-primary-500 selection:text-white">
+    <div className="min-h-screen bg-background text-gray-100 font-sans selection:bg-primary-500 selection:text-white relative">
       <Navbar setView={setCurrentView} currentView={currentView} />
+      
+      {/* Magic Link Notification */}
+      {magicLinkApplied && (
+         <div className="fixed top-24 right-4 z-[60] bg-emerald-500 text-white px-6 py-4 rounded-xl shadow-2xl flex items-center animate-bounce">
+            <CheckCircleIcon className="h-6 w-6 mr-3" />
+            <div>
+               <h4 className="font-bold">¡Conexión Automática!</h4>
+               <p className="text-xs text-emerald-100">Te has conectado exitosamente a la base de datos compartida.</p>
+            </div>
+         </div>
+      )}
+
       <div className="pb-10">
         {renderView()}
       </div>

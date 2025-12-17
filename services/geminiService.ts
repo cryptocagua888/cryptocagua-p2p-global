@@ -1,28 +1,22 @@
 import { GoogleGenAI } from "@google/genai";
 
-// Helper to get safe client
-const getClient = () => {
-  let apiKey: string | undefined;
-  try {
-    // @ts-ignore
-    if (typeof process !== 'undefined' && process.env) {
-      // @ts-ignore
-      apiKey = process.env.API_KEY;
-    }
-  } catch(e) {
-    console.warn("Process env not available");
-  }
-
-  if (!apiKey) {
-    console.warn("API Key not found in environment variables.");
-    return null;
-  }
-  return new GoogleGenAI({ apiKey });
+// INTENTO DE DETECCIÓN ROBUSTA DE API KEY
+// Busca en todas las variantes comunes de variables de entorno para asegurar compatibilidad con Vercel/Vite/CRA
+const getApiKey = () => {
+  return process.env.API_KEY || 
+         process.env.VITE_API_KEY || 
+         process.env.REACT_APP_API_KEY || 
+         '';
 };
 
+const apiKey = getApiKey();
+const ai = new GoogleGenAI({ apiKey: apiKey });
+
 export const generateDescription = async (title: string, category: string): Promise<string> => {
-  const ai = getClient();
-  if (!ai) return "Por favor configura tu API KEY para usar la IA.";
+  if (!apiKey) {
+    console.error("API Key no encontrada. Configure API_KEY en Vercel.");
+    return "Error: API Key de IA no configurada en el servidor.";
+  }
 
   try {
     const prompt = `
@@ -45,13 +39,15 @@ export const generateDescription = async (title: string, category: string): Prom
     return response.text || "No se pudo generar la descripción.";
   } catch (error) {
     console.error("Error generating description:", error);
-    return "Error al conectar con la IA.";
+    return "Error al conectar con la IA. Verifique su API Key.";
   }
 };
 
 export const analyzeOffer = async (offerDetails: string): Promise<string> => {
-  const ai = getClient();
-  if (!ai) return "IA no disponible.";
+  if (!apiKey) {
+    console.error("API Key no encontrada. Configure API_KEY en Vercel.");
+    return "Error: API Key de IA no configurada en el servidor.";
+  }
 
   try {
     const prompt = `
@@ -74,6 +70,6 @@ export const analyzeOffer = async (offerDetails: string): Promise<string> => {
     return response.text || "No se pudo analizar la oferta.";
   } catch (error) {
     console.error("Error analyzing offer:", error);
-    return "Error al analizar.";
+    return "Error al conectar con la IA. Intente más tarde.";
   }
 };

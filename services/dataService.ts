@@ -8,11 +8,15 @@ const ADMIN_SESSION_KEY = 'cryptocagua_admin_session';
 const PROFILE_KEY = 'cryptocagua_user_profile'; // New key for user data
 const EXPIRATION_HOURS = 72; // Las ofertas desaparecen en 3 días
 
-// --- CONFIGURACIÓN GLOBAL (PARA PRODUCCIÓN) ---
-const GLOBAL_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzG0JpURjoflk8HIcuHdFxc4jYxCL96rJ9GQxdgibWxqfI_Tt3Da9HlQ_c3zsx1Ifg2/exec'; 
+// --- CONFIGURACIÓN GLOBAL ---
+const GLOBAL_SCRIPT_URL = ''; 
 
-// PIN DE RESCATE: Úsalo si olvidas el de la hoja de cálculo
-const RESCUE_PIN = '1234';
+// CAMBIO: PIN DE RESCATE (SERVER SIDE)
+// Ya no usamos '1234'. Usamos la variable de entorno configurada en Vercel.
+// Soporta prefijos VITE_ y REACT_APP_ por si acaso.
+const RESCUE_PIN = process.env.ADMIN_PIN || 
+                   process.env.VITE_ADMIN_PIN || 
+                   process.env.REACT_APP_ADMIN_PIN;
 
 // CAMBIO: Data inicial vacía.
 const INITIAL_DATA: Offer[] = [];
@@ -20,6 +24,7 @@ const INITIAL_DATA: Offer[] = [];
 // --- Config Getters ---
 
 export const getSheetUrl = () => {
+  // Configuración persistente en localStorage (el link mágico se usa una vez)
   const local = localStorage.getItem(CONFIG_KEY);
   if (local) return local;
   return GLOBAL_SCRIPT_URL;
@@ -27,6 +32,35 @@ export const getSheetUrl = () => {
 
 export const getAdminEmail = () => {
   return localStorage.getItem(EMAIL_KEY) || '';
+};
+
+// --- Magic Link Logic ---
+export const processMagicLink = (): boolean => {
+  if (typeof window === 'undefined') return false;
+
+  const params = new URLSearchParams(window.location.search);
+  const setupCode = params.get('setup');
+
+  if (setupCode) {
+    try {
+      // Decode Base64 to get the URL
+      const decodedUrl = atob(setupCode);
+      
+      // Basic validation to ensure it looks like a URL
+      if (decodedUrl.startsWith('http')) {
+        saveSheetUrl(decodedUrl);
+        
+        // Clean the URL so the user doesn't see the ugly token
+        const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+        window.history.replaceState({path: newUrl}, '', newUrl);
+        
+        return true; // Configuration applied successfully
+      }
+    } catch (e) {
+      console.error("Invalid Magic Link", e);
+    }
+  }
+  return false;
 };
 
 // --- Data Methods ---
@@ -58,6 +92,7 @@ export const getOffers = (): Offer[] => {
 // --- Fetch from Google Sheets (Read) ---
 export const fetchOffers = async (): Promise<Offer[]> => {
   const scriptUrl = getSheetUrl();
+  // Si no hay URL configurada, no intentamos fetch para evitar errores de red
   if (!scriptUrl) return getOffers(); 
 
   try {
@@ -67,6 +102,8 @@ export const fetchOffers = async (): Promise<Offer[]> => {
       body: JSON.stringify({ action: 'read' })
     });
 
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
     const data = await response.json();
     
     if (data.success && Array.isArray(data.data)) {
@@ -75,7 +112,7 @@ export const fetchOffers = async (): Promise<Offer[]> => {
     }
     return getOffers();
   } catch (e) {
-    console.error("Error fetching remote offers:", e);
+    console.warn("Modo Offline activo (Error conectando a Sheets):", e);
     return getOffers(); 
   }
 };
@@ -124,6 +161,7 @@ export const getUserProfile = () => {
 
 // --- Config Setters ---
 export const saveSheetUrl = (url: string) => {
+  // Guardamos en localStorage para persistencia total
   localStorage.setItem(CONFIG_KEY, url);
 };
 
@@ -146,28 +184,16 @@ export const isAdmin = (): boolean => {
 
 // --- PIN Verification Logic ---
 export const verifyServerPin = async (pin: string): Promise<boolean> => {
-  // 1. BYPASS: PIN de Rescate
-  if (pin === RESCUE_PIN) {
-    return true;
-  }
-
-  // 2. Variable de Entorno Vercel (Acceso Estático Directo)
-  // Al acceder directamente a process.env.ADMIN_PIN, el bundler puede inyectar el valor.
-  try {
-    // @ts-ignore
-    if (typeof process !== 'undefined' && process.env.ADMIN_PIN) {
-        // @ts-ignore
-        if (pin === process.env.ADMIN_PIN) return true;
-    }
-  } catch (e) {}
-
-  // 3. Google Sheets (Legacy / Backup)
   const scriptUrl = getSheetUrl();
   
+  // ESCENARIO 1: No hay hoja conectada.
+  // Usamos el PIN de entorno (ADMIN_PIN)
   if (!scriptUrl) {
-    return pin === '2024';
+    return !!RESCUE_PIN && pin === RESCUE_PIN;
   }
 
+  // ESCENARIO 2: Hay hoja conectada.
+  // Intentamos validar CONTRA LA HOJA.
   try {
     const response = await fetch(scriptUrl, {
       method: 'POST',
@@ -175,11 +201,19 @@ export const verifyServerPin = async (pin: string): Promise<boolean> => {
       body: JSON.stringify({ action: 'auth', pin: pin })
     });
     
+    if (!response.ok) throw new Error("Network response not ok");
+
     const result = await response.json();
+    
+    // Si la hoja responde (éxito o fallo), respetamos SU decisión.
     return result.success === true;
+
   } catch (e) {
-    console.error('Error verificando PIN', e);
-    return false;
+    console.warn('Fallo de conexión al verificar PIN, usando PIN de entorno local.');
+    
+    // ESCENARIO 3: Error de Red / URL Rota / CORS.
+    // Usamos el PIN de entorno (ADMIN_PIN) como respaldo.
+    return !!RESCUE_PIN && pin === RESCUE_PIN;
   }
 };
 
