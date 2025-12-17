@@ -37,7 +37,7 @@ export const ConfigGuide: React.FC = () => {
       setIsAuthenticated(true);
       setAdminSession(true);
     } else {
-      alert('PIN Incorrecto. Verifique su VITE_ADMIN_PIN en Vercel o el PIN en la Hoja de Cálculo.');
+      alert('PIN Incorrecto. Verifique VITE_ADMIN_PIN en Vercel.');
       setPin('');
     }
     setLoading(false);
@@ -197,19 +197,24 @@ export const ConfigGuide: React.FC = () => {
              <div className="flex items-center justify-between mb-1">
                 <span>PIN Variable (VITE_ADMIN_PIN)</span>
                 {hasEnvPin ? (
-                  <span className="text-green-400 flex items-center"><SignalIcon className="h-3 w-3 mr-1"/> Detectado</span>
+                  <span className="text-green-400 flex items-center"><SignalIcon className="h-3 w-3 mr-1"/> Detectado (Llave Maestra)</span>
                 ) : (
                   <span className="text-red-400 flex items-center"><SignalSlashIcon className="h-3 w-3 mr-1"/> No Detectado</span>
                 )}
              </div>
              
-             <div className="flex items-center justify-between">
+             <div className="flex items-center justify-between mb-1">
                 <span>API Key IA (VITE_API_KEY)</span>
                 {hasEnvAi ? (
                   <span className="text-green-400 flex items-center"><SignalIcon className="h-3 w-3 mr-1"/> Detectado</span>
                 ) : (
                   <span className="text-red-400 flex items-center"><SignalSlashIcon className="h-3 w-3 mr-1"/> No Detectado</span>
                 )}
+             </div>
+
+             <div className="mt-2 pt-2 border-t border-gray-700 text-gray-400">
+                <p className="mb-1 text-yellow-500 font-bold">Nota:</p>
+                <p>Si VITE_ADMIN_PIN está configurado, tendrá prioridad sobre cualquier PIN en Google Sheets.</p>
              </div>
           </div>
         </div>
@@ -259,8 +264,8 @@ export const ConfigGuide: React.FC = () => {
             <div className="text-sm text-gray-300">
                <p className="mb-2">Actualmente tu PIN se gestiona desde Google Sheets o Vercel:</p>
                <ol className="list-decimal list-inside space-y-1 text-gray-400">
-                  <li><strong>Modo Offline:</strong> Variable <code>VITE_ADMIN_PIN</code> {hasEnvPin ? <span className="text-green-500">(Activa)</span> : <span className="text-red-500">(Inactiva)</span>}.</li>
-                  <li><strong>Modo Online:</strong> Celda <strong>B1</strong> en la hoja "Config".</li>
+                  <li><strong>Llave Maestra (Vercel):</strong> Variable <code>VITE_ADMIN_PIN</code> {hasEnvPin ? <span className="text-green-500 font-bold">ACTIVA</span> : <span className="text-red-500">INACTIVA</span>}.</li>
+                  <li><strong>PIN Hoja (Secundario):</strong> Celda <strong>B1</strong> en la hoja "Config" (si Vercel falla).</li>
                </ol>
             </div>
           </div>

@@ -11,13 +11,33 @@ const EXPIRATION_HOURS = 72; // Las ofertas desaparecen en 3 días
 // --- CONFIGURACIÓN GLOBAL ---
 const GLOBAL_SCRIPT_URL = ''; 
 
+// Helper para leer variables de entorno en Vite/CRA/Next de forma segura
+const getEnv = (key: string) => {
+  // 1. Intentar Vite (import.meta.env)
+  try {
+    // @ts-ignore
+    if (import.meta && import.meta.env && import.meta.env[key]) {
+      // @ts-ignore
+      return import.meta.env[key];
+    }
+  } catch (e) {}
+
+  // 2. Intentar process.env estándar
+  try {
+    if (typeof process !== 'undefined' && process.env && process.env[key]) {
+      return process.env[key];
+    }
+  } catch (e) {}
+
+  return '';
+};
+
 // CAMBIO: PIN DE RESCATE (SERVER SIDE)
-// Ya no usamos '1234'. Usamos la variable de entorno configurada en Vercel.
-// Soporta prefijos VITE_, REACT_APP_ y NEXT_PUBLIC_
-const RESCUE_PIN = process.env.ADMIN_PIN || 
-                   process.env.VITE_ADMIN_PIN || 
-                   process.env.REACT_APP_ADMIN_PIN ||
-                   process.env.NEXT_PUBLIC_ADMIN_PIN;
+// La variable EN VERCEL debe llamarse 'VITE_ADMIN_PIN' para que sea visible aquí.
+const RESCUE_PIN = getEnv('VITE_ADMIN_PIN') || 
+                   getEnv('REACT_APP_ADMIN_PIN') ||
+                   getEnv('NEXT_PUBLIC_ADMIN_PIN') ||
+                   getEnv('ADMIN_PIN'); 
 
 // Helper para verificar si el PIN está cargado (para diagnóstico)
 export const isPinConfigured = () => !!RESCUE_PIN && RESCUE_PIN.length > 0;
@@ -188,16 +208,25 @@ export const isAdmin = (): boolean => {
 
 // --- PIN Verification Logic ---
 export const verifyServerPin = async (pin: string): Promise<boolean> => {
-  const scriptUrl = getSheetUrl();
+  console.log("Intento de Auth con PIN:", pin);
   
-  // ESCENARIO 1: No hay hoja conectada.
-  // Usamos el PIN de entorno (ADMIN_PIN)
-  if (!scriptUrl) {
-    return !!RESCUE_PIN && pin === RESCUE_PIN;
+  // 1. MASTER KEY CHECK (PRIORIDAD MÁXIMA)
+  // Si el PIN coincide con la variable de entorno, entramos SIEMPRE.
+  // Esto ignora si la hoja de cálculo tiene otro PIN o si está caída.
+  if (RESCUE_PIN && pin === RESCUE_PIN) {
+    console.log("Autenticación exitosa por Variable de Entorno (Master Key)");
+    return true;
   }
 
-  // ESCENARIO 2: Hay hoja conectada.
-  // Intentamos validar CONTRA LA HOJA.
+  const scriptUrl = getSheetUrl();
+  
+  // 2. Si no es la Master Key y no hay hoja, fallamos.
+  if (!scriptUrl) {
+    console.log("Fallo: PIN no coincide con Vercel y no hay Hoja conectada.");
+    return false;
+  }
+
+  // 3. Intentamos validar con la Hoja (Legacy support)
   try {
     const response = await fetch(scriptUrl, {
       method: 'POST',
@@ -208,16 +237,11 @@ export const verifyServerPin = async (pin: string): Promise<boolean> => {
     if (!response.ok) throw new Error("Network response not ok");
 
     const result = await response.json();
-    
-    // Si la hoja responde (éxito o fallo), respetamos SU decisión.
     return result.success === true;
 
   } catch (e) {
-    console.warn('Fallo de conexión al verificar PIN, usando PIN de entorno local.');
-    
-    // ESCENARIO 3: Error de Red / URL Rota / CORS.
-    // Usamos el PIN de entorno (ADMIN_PIN) como respaldo.
-    return !!RESCUE_PIN && pin === RESCUE_PIN;
+    console.warn('Fallo al conectar con hoja, y el PIN no era la Master Key.');
+    return false;
   }
 };
 

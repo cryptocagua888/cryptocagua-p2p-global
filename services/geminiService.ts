@@ -1,13 +1,32 @@
 import { GoogleGenAI } from "@google/genai";
 
 // INTENTO DE DETECCIÓN ROBUSTA DE API KEY
-// Busca en todas las variantes comunes de variables de entorno para asegurar compatibilidad con Vercel/Vite/CRA/Next
+const getEnv = (key: string) => {
+  // 1. Intentar Vite (import.meta.env)
+  try {
+    // @ts-ignore
+    if (import.meta && import.meta.env && import.meta.env[key]) {
+      // @ts-ignore
+      return import.meta.env[key];
+    }
+  } catch (e) {}
+
+  // 2. Intentar process.env estándar
+  try {
+    if (typeof process !== 'undefined' && process.env && process.env[key]) {
+      return process.env[key];
+    }
+  } catch (e) {}
+
+  return '';
+};
+
+// Buscar en todas las variantes comunes de variables de entorno
 const getApiKey = () => {
-  return process.env.API_KEY || 
-         process.env.VITE_API_KEY || 
-         process.env.REACT_APP_API_KEY || 
-         process.env.NEXT_PUBLIC_API_KEY ||
-         '';
+  return getEnv('VITE_API_KEY') || 
+         getEnv('REACT_APP_API_KEY') || 
+         getEnv('NEXT_PUBLIC_API_KEY') || 
+         getEnv('API_KEY');
 };
 
 const apiKey = getApiKey();
