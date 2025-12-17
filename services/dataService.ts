@@ -1,6 +1,6 @@
 import { Offer, OfferType, AssetCategory, OfferStatus } from '../types';
 
-const STORAGE_KEY = 'cryptocagua_offers_v6'; // V6 Clean Slate
+const STORAGE_KEY = 'cryptocagua_offers_v6';
 const CONFIG_KEY = 'cryptocagua_sheet_url';
 const EMAIL_KEY = 'cryptocagua_admin_email';
 const ADMIN_SESSION_KEY = 'cryptocagua_admin_session';
@@ -47,23 +47,48 @@ export const getOffers = (): Offer[] => {
   return offers;
 };
 
-// --- CORE SYNC FUNCTION (SIMPLIFICADA) ---
+// --- CORE SYNC FUNCTION ---
 const sendToSheet = async (payload: any): Promise<boolean> => {
   const scriptUrl = getSheetUrl();
   if (!scriptUrl) return false;
 
   try {
-    await fetch(scriptUrl, {
+    // IMPORTANTE: No usar mode: 'cors' explícito.
+    // Al usar text/plain y no poner mode, el navegador hace una "Simple Request".
+    // Esto evita el "Preflight" (OPTIONS) que Google Script suele bloquear.
+    const response = await fetch(scriptUrl, {
       method: 'POST',
-      mode: 'no-cors', 
+      redirect: 'follow',
       headers: {
-        'Content-Type': 'text/plain', 
+        'Content-Type': 'text/plain;charset=utf-8', 
       },
       body: JSON.stringify(payload)
     });
+
+    if (!response.ok) {
+        // Intentar leer el error si es posible, o asumir error de red
+        const txt = await response.text().catch(() => "Error desconocido");
+        console.error("Server Error:", txt);
+        return false;
+    }
+
+    // A veces Google devuelve HTML de error (como 404 de página de google), verificar si es JSON
+    const text = await response.text();
+    try {
+        const json = JSON.parse(text);
+        if (json.error) {
+            console.error("Script Error:", json.error);
+            return false;
+        }
+    } catch(e) {
+        // Si no es JSON, es un error de Google (ej: script no encontrado o permisos)
+        console.error("Respuesta no válida del script:", text.substring(0, 100));
+        return false;
+    }
+    
     return true;
   } catch (e) {
-    console.error("Error envío simple:", e);
+    console.error("Error de conexión:", e);
     return false;
   }
 };
@@ -72,11 +97,10 @@ const sendToSheet = async (payload: any): Promise<boolean> => {
 
 export const fetchOffers = async (): Promise<Offer[]> => {
   const scriptUrl = getSheetUrl();
-  // Si no hay URL configurada, devolvemos local
   if (!scriptUrl) return getOffers(); 
 
   try {
-    console.log("📥 Descargando datos de la hoja...");
+    console.log("📥 Descargando datos...");
     const response = await fetch(scriptUrl, {
       method: 'POST',
       redirect: 'follow',
@@ -88,32 +112,27 @@ export const fetchOffers = async (): Promise<Offer[]> => {
 
     const data = await response.json();
     
-    // Si la hoja responde éxito, SOBREESCRIBIMOS lo local para asegurar consistencia
     if (data.success && Array.isArray(data.data)) {
-      console.log("✅ Datos actualizados desde la hoja:", data.data.length);
+      console.log("✅ Datos actualizados:", data.data.length);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data.data));
       return data.data;
     }
     return getOffers();
   } catch (e) {
-    console.warn("⚠️ Error leyendo hoja (Usando caché local):", e);
+    console.warn("⚠️ Error lectura (Usando caché):", e);
     return getOffers(); 
   }
 };
 
 export const deleteOffer = (id: string) => {
-  // Borrar Local
   const offers = getOffers().filter(o => o.id !== id);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(offers));
-  // Borrar Remoto (Blind)
   sendToSheet({ action: 'delete', id }); 
 };
 
 export const approveOffer = async (id: string) => {
-  // Aprobar Local
   const offers = getOffers().map(o => o.id === id ? { ...o, status: 'APPROVED' as OfferStatus } : o);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(offers));
-  // Aprobar Remoto
   await sendToSheet({ action: 'updateStatus', id, status: 'APPROVED' });
 };
 
@@ -127,7 +146,6 @@ export const addOffer = (offer: Omit<Offer, 'id' | 'createdAt' | 'status' | 'rep
     verified: false
   };
   
-  // 1. Guardar Local (Optimistic UI)
   const offers = [newOffer, ...getOffers()];
   localStorage.setItem(STORAGE_KEY, JSON.stringify(offers));
   
@@ -135,7 +153,6 @@ export const addOffer = (offer: Omit<Offer, 'id' | 'createdAt' | 'status' | 'rep
 };
 
 export const syncWithGoogleSheets = async (offer: Offer): Promise<boolean> => {
-  // 2. Enviar a la hoja
   const payload = { action: 'save', ...offer };
   return await sendToSheet(payload);
 };
@@ -144,15 +161,15 @@ export const testConnection = async (): Promise<{success: boolean, message: stri
   const scriptUrl = getSheetUrl();
   if (!scriptUrl) return { success: false, message: "Falta URL" };
 
-  const testId = 'TEST-' + Math.floor(Math.random() * 1000);
+  const testId = 'TEST-' + Math.floor(Math.random() * 10000);
   const payload = {
     action: 'save', 
     id: testId,
     type: 'TEST',
-    title: 'Prueba Sin Auth',
-    description: 'Verificando escritura directa.',
+    title: 'Verificación de Escritura',
+    description: 'Este dato debe ser leído de vuelta para confirmar.',
     category: 'DIGITAL',
-    asset: 'Test',
+    asset: 'System Check',
     price: '0',
     location: 'System',
     createdAt: new Date().toISOString(),
@@ -160,19 +177,45 @@ export const testConnection = async (): Promise<{success: boolean, message: stri
     nickname: 'Admin'
   };
 
+  // 1. Intentar Escribir
+  console.log("1. Enviando datos de prueba...");
   const sent = await sendToSheet(payload);
   
-  if (sent) {
+  if (!sent) {
       return { 
-          success: true, 
-          message: `Enviado. Verifica si apareció el ID ${testId} en la hoja "Ofertas".` 
+          success: false, 
+          message: "Falló el envío. Verifica: 1. URL termine en /exec. 2. Permisos 'Cualquier persona' (Anyone)." 
       };
-  } else {
-      return { success: false, message: "Error al enviar la petición." };
+  }
+
+  // 2. Intentar Leer de vuelta (Verificación real)
+  console.log("2. Esperando propagación (2s)...");
+  await new Promise(r => setTimeout(r, 2000));
+  
+  console.log("3. Intentando leer los datos...");
+  try {
+      const remoteData = await fetchOffers();
+      const found = remoteData.find(o => o.id === testId);
+      
+      if (found) {
+          // Limpiar el dato de prueba (blind delete)
+          deleteOffer(testId);
+          return { 
+              success: true, 
+              message: `¡CONEXIÓN EXITOSA! ✅ Se escribió y leyó el ID ${testId} correctamente.` 
+          };
+      } else {
+          return { 
+              success: false, 
+              message: "El servidor respondió OK, pero el dato no apareció. Asegúrate de haber hecho 'Nueva Implementación' en el Script." 
+          };
+      }
+  } catch (e) {
+      return { success: false, message: "Error leyendo de vuelta los datos." };
   }
 };
 
-// --- AUTH (SOLO VERCEL/ENV) ---
+// --- AUTH ---
 export const setAdminSession = (isValid: boolean) => {
   if (isValid) sessionStorage.setItem(ADMIN_SESSION_KEY, 'true');
   else sessionStorage.removeItem(ADMIN_SESSION_KEY);
@@ -181,8 +224,6 @@ export const setAdminSession = (isValid: boolean) => {
 export const isAdmin = () => sessionStorage.getItem(ADMIN_SESSION_KEY) === 'true';
 
 export const verifyServerPin = async (pin: string): Promise<boolean> => {
-  // YA NO CONSULTAMOS LA HOJA PARA EL PIN.
-  // Solo validamos contra la variable de entorno local/servidor.
   if (RESCUE_PIN && pin === RESCUE_PIN) return true;
   return false;
 };

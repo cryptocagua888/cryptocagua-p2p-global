@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { saveSheetUrl, getSheetUrl, saveAdminEmail, getAdminEmail, setAdminSession, isAdmin, verifyServerPin, isPinConfigured, testConnection, validateSheetUrl, getBrowserTestLink } from '../services/dataService';
 import { isAiConfigured } from '../services/geminiService';
-import { ClipboardDocumentIcon, CheckIcon, LockClosedIcon, EnvelopeIcon, ArrowRightOnRectangleIcon, GlobeAmericasIcon, ServerIcon, TableCellsIcon, KeyIcon, ExclamationTriangleIcon, ShareIcon, SparklesIcon, SignalIcon, SignalSlashIcon, BoltIcon, RocketLaunchIcon, GlobeAltIcon } from '@heroicons/react/24/outline';
+import { ClipboardDocumentIcon, CheckIcon, LockClosedIcon, EnvelopeIcon, ArrowRightOnRectangleIcon, GlobeAmericasIcon, ServerIcon, TableCellsIcon, KeyIcon, ExclamationTriangleIcon, ShareIcon, SparklesIcon, SignalIcon, SignalSlashIcon, BoltIcon, RocketLaunchIcon, GlobeAltIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 
 export const ConfigGuide: React.FC = () => {
   const [url, setUrl] = useState('');
@@ -44,7 +44,6 @@ export const ConfigGuide: React.FC = () => {
     e.preventDefault();
     setLoading(true);
     
-    // Verificación puramente local/env
     const isValid = await verifyServerPin(pin);
     
     if (isValid) {
@@ -90,7 +89,6 @@ export const ConfigGuide: React.FC = () => {
     setTimeout(() => setEmailSaved(false), 2000);
   };
 
-  // Generate Magic Link
   const getMagicLink = () => {
     if (!url) return '';
     const encoded = btoa(url);
@@ -107,8 +105,8 @@ export const ConfigGuide: React.FC = () => {
     alert("¡Link Mágico copiado! Envíalo a tus usuarios.");
   };
 
-  const appScriptCode = `// --- CÓDIGO FINAL v8 (SIN CONFIG/SIN PIN) ---
-// Este script solo maneja datos. La seguridad del admin se maneja en la App (Vercel).
+  const appScriptCode = `// --- CÓDIGO v10 (ULTRA ROBUSTO) ---
+// Maneja datos JSON y parámetros URL.
 
 function doGet(e) {
   return handleRequest(e);
@@ -120,69 +118,68 @@ function doPost(e) {
 
 function handleRequest(e) {
   var lock = LockService.getScriptLock();
-  lock.tryLock(5000); 
+  // Reduce timeout to avoid long waits
+  lock.tryLock(2000); 
 
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var data = null;
 
-    // 1. Leer JSON body
+    // INTENTO 1: Parsear JSON del postData
     if (e.postData && e.postData.contents) {
-      try { data = JSON.parse(e.postData.contents); } catch(err) {}
+      try { 
+         data = JSON.parse(e.postData.contents); 
+      } catch(err) {
+         // Fallback por si llega mal formateado
+         console.log("JSON Error: " + err);
+      }
     }
-    // 2. Leer Parámetros URL
+    
+    // INTENTO 2: Mirar parámetros (GET o form-data)
     if (!data && e.parameter) {
-       data = e.parameter;
+       // Si hay parametros como id, action, usalos
+       if(e.parameter.action) {
+         data = e.parameter;
+       }
+    }
+    
+    // INTENTO 3: Extraer de claves si es 'text/plain' con no-cors antiguo
+    if (data && !data.action && !data.id) {
+       for (var key in data) {
+          try {
+             var nested = JSON.parse(key);
+             if (nested.action || nested.id) {
+                data = nested;
+                break;
+             }
+          } catch(err2) {}
+       }
     }
 
     if (!data) {
-       return ContentService.createTextOutput(JSON.stringify({ "error": "No data" })).setMimeType(ContentService.MimeType.JSON);
+       return ContentService.createTextOutput(JSON.stringify({ "error": "No data received" })).setMimeType(ContentService.MimeType.JSON);
     }
 
-    // --- SOLO USAMOS LA HOJA "OFERTAS" ---
     var sheet = ss.getSheetByName("Ofertas");
     if (!sheet) {
       sheet = ss.insertSheet("Ofertas");
       sheet.appendRow(["ID", "FECHA", "TIPO", "CATEGORIA", "TITULO", "ACTIVO", "PRECIO", "UBICACION", "DESCRIPCION", "CONTACTO", "ESTADO", "NICKNAME"]);
     }
 
-    // --- GUARDAR (SAVE) ---
-    if (data.id) {
-       // Si es borrar (delete logic simple: agregar estado DELETED o implementar borrado real si prefieres)
-       if (data.action === 'delete') {
-          // Implementación opcional de borrado real
-          var rows = sheet.getDataRange().getValues();
-          for (var i = 0; i < rows.length; i++) {
-            if (String(rows[i][0]) === String(data.id)) {
-              sheet.deleteRow(i + 1);
-              return ContentService.createTextOutput(JSON.stringify({ "success": true, "action": "deleted" })).setMimeType(ContentService.MimeType.JSON);
-            }
-          }
-       }
-
-       // Update Status
-       if (data.action === 'updateStatus') {
-          var rows = sheet.getDataRange().getValues();
-          for (var i = 0; i < rows.length; i++) {
-            if (String(rows[i][0]) === String(data.id)) {
-              sheet.getRange(i + 1, 11).setValue(data.status);
-              return ContentService.createTextOutput(JSON.stringify({ "success": true, "action": "updated" })).setMimeType(ContentService.MimeType.JSON);
-            }
-          }
-       }
+    // --- ACCIONES ---
     
-      // Guardar Nuevo
+    // 1. Guardar
+    if (data.id && data.action === 'save') {
       var date = data.createdAt || new Date().toISOString();
       sheet.appendRow([
         data.id, date, data.type || 'TEST', data.category, data.title, 
         data.asset, data.price, data.location, data.description, 
         data.contactInfo, data.status || 'PENDING', data.nickname
       ]);
-      
-      return ContentService.createTextOutput(JSON.stringify({ "success": true })).setMimeType(ContentService.MimeType.JSON);
+      return ContentService.createTextOutput(JSON.stringify({ "success": true, "written": true })).setMimeType(ContentService.MimeType.JSON);
     }
     
-    // --- LEER (READ) ---
+    // 2. Leer
     if (data.action === 'read') {
       var rows = sheet.getDataRange().getValues();
       var offers = [];
@@ -197,19 +194,42 @@ function handleRequest(e) {
       }
       return ContentService.createTextOutput(JSON.stringify({ "success": true, "data": offers })).setMimeType(ContentService.MimeType.JSON);
     }
+    
+    // 3. Borrar
+    if (data.action === 'delete') {
+          var rows = sheet.getDataRange().getValues();
+          for (var i = 0; i < rows.length; i++) {
+            if (String(rows[i][0]) === String(data.id)) {
+              sheet.deleteRow(i + 1);
+              return ContentService.createTextOutput(JSON.stringify({ "success": true, "action": "deleted" })).setMimeType(ContentService.MimeType.JSON);
+            }
+          }
+          return ContentService.createTextOutput(JSON.stringify({ "success": false, "error": "ID not found" })).setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    // 4. Actualizar Estado
+    if (data.action === 'updateStatus') {
+          var rows = sheet.getDataRange().getValues();
+          for (var i = 0; i < rows.length; i++) {
+            if (String(rows[i][0]) === String(data.id)) {
+              sheet.getRange(i + 1, 11).setValue(data.status);
+              return ContentService.createTextOutput(JSON.stringify({ "success": true, "action": "updated" })).setMimeType(ContentService.MimeType.JSON);
+            }
+          }
+    }
 
-    return ContentService.createTextOutput(JSON.stringify({ "error": "Accion desconocida" })).setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(JSON.stringify({ "error": "Unknown action", "received": data })).setMimeType(ContentService.MimeType.JSON);
 
   } catch(e) {
     return ContentService.createTextOutput(JSON.stringify({ "error": e.toString() })).setMimeType(ContentService.MimeType.JSON);
   } finally {
-    lock.releaseLock();
+    try { lock.releaseLock(); } catch(e) {}
   }
 }`;
 
   const copyCode = () => {
     navigator.clipboard.writeText(appScriptCode);
-    alert("¡Código v8 (Sin PIN) copiado! Actualiza tu Script en Google.");
+    alert("¡Código v10 Copiado! Recuerda crear una NUEVA Implementación.");
   };
 
   const headers = [
@@ -257,11 +277,6 @@ function handleRequest(e) {
                   <span className="text-red-400 flex items-center"><SignalSlashIcon className="h-3 w-3 mr-1"/> No Configurado</span>
                 )}
              </div>
-             {!hasEnvPin && (
-                 <p className="text-red-400 mt-2">
-                     ⚠ Debes configurar la variable de entorno <code>VITE_ADMIN_PIN</code> en Vercel o en tu archivo .env local para poder entrar.
-                 </p>
-             )}
           </div>
         </div>
       </div>
@@ -279,6 +294,17 @@ function handleRequest(e) {
           <button onClick={handleLogout} className="text-gray-400 hover:text-white">
             <ArrowRightOnRectangleIcon className="h-6 w-6" />
           </button>
+        </div>
+
+        {/* Deployment Reminder Banner */}
+        <div className="bg-blue-500/10 border border-blue-500/30 p-4 rounded-xl mb-8 flex items-start">
+            <RocketLaunchIcon className="h-6 w-6 text-blue-400 mr-3 flex-shrink-0" />
+            <div>
+                <h4 className="font-bold text-blue-200 text-sm">¿Acabas de actualizar el código?</h4>
+                <p className="text-xs text-blue-100/70 mt-1">
+                    Si has cambiado <code>dataService.ts</code> o corregido errores de compilación, recuerda hacer <strong>Redeploy en Vercel</strong> para que los cambios surtan efecto en la web en vivo.
+                </p>
+            </div>
         </div>
         
         <div className="space-y-8">
@@ -345,7 +371,7 @@ function handleRequest(e) {
                  <div className="flex justify-between items-center">
                     <div>
                         <h4 className="text-sm font-bold text-white">Prueba Rápida</h4>
-                        <p className="text-xs text-gray-400">Envía datos a la hoja para verificar permisos.</p>
+                        <p className="text-xs text-gray-400">Verifica escritura y lectura real.</p>
                     </div>
                     <button 
                     onClick={handleTestConnection} 
@@ -353,7 +379,7 @@ function handleRequest(e) {
                     className="flex items-center px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-bold transition-colors disabled:opacity-50"
                     >
                         {testing ? <ArrowPathIcon className="h-4 w-4 animate-spin mr-2" /> : <BoltIcon className="h-4 w-4 mr-2 text-yellow-400" />}
-                        {testing ? 'Probando...' : 'Prueba App'}
+                        {testing ? 'Verificando...' : 'Probar Conexión'}
                     </button>
                  </div>
                  
@@ -405,17 +431,16 @@ function handleRequest(e) {
           <div className="bg-slate-800/50 p-6 rounded-xl border border-white/5">
             <h3 className="text-lg font-semibold text-primary-400 mb-4 flex items-center">
                 <ServerIcon className="h-5 w-5 mr-2" />
-                Código Backend (v8 - Sin Config)
+                Código Backend (v10 - Ultra Robusto)
             </h3>
             
             <div className="bg-yellow-500/10 border border-yellow-500/20 p-3 rounded-lg mb-4 flex items-start">
                <RocketLaunchIcon className="h-5 w-5 text-yellow-500 mr-2 flex-shrink-0 mt-0.5" />
                <div className="text-xs text-yellow-200">
-                  <span className="font-bold">PASOS OBLIGATORIOS:</span><br/>
-                  1. Copia este código y actualiza Google Apps Script.<br/>
-                  2. <strong>¡GUARDA EL ARCHIVO (Ctrl + S)!</strong><br/>
-                  3. Implementar &rarr; Nueva Implementación.<br/>
-                  4. Ya puedes borrar la hoja "Config" si existía.
+                  <span className="font-bold">¡PASO CRÍTICO!:</span><br/>
+                  1. Pega este nuevo código.<br/>
+                  2. <strong>Implementar &rarr; Nueva Implementación.</strong><br/>
+                  3. Si no creas una nueva implementación, seguirás usando el código viejo y fallará.
                </div>
             </div>
 
@@ -431,10 +456,4 @@ function handleRequest(e) {
       </div>
     </div>
   );
-}
-
-function ArrowPathIcon({className}: {className?: string}) {
-    return <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
-    </svg>
 }
