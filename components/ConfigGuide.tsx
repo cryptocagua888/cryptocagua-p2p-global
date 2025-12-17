@@ -414,7 +414,7 @@ function handleRequest(e) {
                   <span className="font-bold">PASOS OBLIGATORIOS:</span><br/>
                   1. Copia este código y actualiza Google Apps Script.<br/>
                   2. <strong>¡GUARDA EL ARCHIVO (Ctrl + S)!</strong><br/>
-                  3. Implementar -> Nueva Implementación.<br/>
+                  3. Implementar &rarr; Nueva Implementación.<br/>
                   4. Ya puedes borrar la hoja "Config" si existía.
                </div>
             </div>

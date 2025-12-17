@@ -1,6 +1,6 @@
 import { Offer, OfferType, AssetCategory, OfferStatus } from '../types';
 
-const STORAGE_KEY = 'cryptocagua_offers_v5'; // V5 Clean Slate
+const STORAGE_KEY = 'cryptocagua_offers_v6'; // V6 Clean Slate
 const CONFIG_KEY = 'cryptocagua_sheet_url';
 const EMAIL_KEY = 'cryptocagua_admin_email';
 const ADMIN_SESSION_KEY = 'cryptocagua_admin_session';
@@ -16,10 +16,13 @@ const getEnv = (key: string) => {
     // @ts-ignore
     if (import.meta && import.meta.env && import.meta.env[key]) return import.meta.env[key];
   } catch (e) {}
+  try {
+    if (typeof process !== 'undefined' && process.env && process.env[key]) return process.env[key];
+  } catch (e) {}
   return '';
 };
 
-const RESCUE_PIN = getEnv('VITE_ADMIN_PIN') || getEnv('REACT_APP_ADMIN_PIN'); 
+const RESCUE_PIN = getEnv('VITE_ADMIN_PIN') || getEnv('REACT_APP_ADMIN_PIN') || getEnv('NEXT_PUBLIC_ADMIN_PIN') || getEnv('ADMIN_PIN'); 
 export const isPinConfigured = () => !!RESCUE_PIN;
 const INITIAL_DATA: Offer[] = [];
 
