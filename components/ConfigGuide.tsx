@@ -105,8 +105,8 @@ export const ConfigGuide: React.FC = () => {
     alert("¡Link Mágico copiado! Envíalo a tus usuarios.");
   };
 
-  const appScriptCode = `// --- CÓDIGO v10 (ULTRA ROBUSTO) ---
-// Maneja datos JSON y parámetros URL.
+  const appScriptCode = `// --- CÓDIGO v11 (DIAGNÓSTICO) ---
+// Soporta JSON y Form Data. Devuelve error detallado.
 
 function doGet(e) {
   return handleRequest(e);
@@ -118,46 +118,34 @@ function doPost(e) {
 
 function handleRequest(e) {
   var lock = LockService.getScriptLock();
-  // Reduce timeout to avoid long waits
-  lock.tryLock(2000); 
+  lock.tryLock(3000); 
 
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var data = null;
 
-    // INTENTO 1: Parsear JSON del postData
-    if (e.postData && e.postData.contents) {
+    // 1. Intentar Form Parameters (application/x-www-form-urlencoded)
+    if (e.parameter && e.parameter.action) {
+       data = e.parameter;
+    }
+    
+    // 2. Intentar JSON Body (Si no hubo parametros)
+    if (!data && e.postData && e.postData.contents) {
       try { 
          data = JSON.parse(e.postData.contents); 
       } catch(err) {
-         // Fallback por si llega mal formateado
-         console.log("JSON Error: " + err);
+         // Silencioso, intentaremos otros métodos
       }
-    }
-    
-    // INTENTO 2: Mirar parámetros (GET o form-data)
-    if (!data && e.parameter) {
-       // Si hay parametros como id, action, usalos
-       if(e.parameter.action) {
-         data = e.parameter;
-       }
-    }
-    
-    // INTENTO 3: Extraer de claves si es 'text/plain' con no-cors antiguo
-    if (data && !data.action && !data.id) {
-       for (var key in data) {
-          try {
-             var nested = JSON.parse(key);
-             if (nested.action || nested.id) {
-                data = nested;
-                break;
-             }
-          } catch(err2) {}
-       }
     }
 
     if (!data) {
-       return ContentService.createTextOutput(JSON.stringify({ "error": "No data received" })).setMimeType(ContentService.MimeType.JSON);
+       // Debug Info para el usuario
+       var debug = {
+          "error": "No data received (v11)",
+          "params_keys": e.parameter ? Object.keys(e.parameter) : [],
+          "post_type": e.postData ? e.postData.type : "none"
+       };
+       return ContentService.createTextOutput(JSON.stringify(debug)).setMimeType(ContentService.MimeType.JSON);
     }
 
     var sheet = ss.getSheetByName("Ofertas");
@@ -168,8 +156,9 @@ function handleRequest(e) {
 
     // --- ACCIONES ---
     
-    // 1. Guardar
-    if (data.id && data.action === 'save') {
+    if (data.action === 'save') {
+      if (!data.id) return ContentService.createTextOutput(JSON.stringify({ "error": "Missing ID" })).setMimeType(ContentService.MimeType.JSON);
+      
       var date = data.createdAt || new Date().toISOString();
       sheet.appendRow([
         data.id, date, data.type || 'TEST', data.category, data.title, 
@@ -179,7 +168,6 @@ function handleRequest(e) {
       return ContentService.createTextOutput(JSON.stringify({ "success": true, "written": true })).setMimeType(ContentService.MimeType.JSON);
     }
     
-    // 2. Leer
     if (data.action === 'read') {
       var rows = sheet.getDataRange().getValues();
       var offers = [];
@@ -195,7 +183,6 @@ function handleRequest(e) {
       return ContentService.createTextOutput(JSON.stringify({ "success": true, "data": offers })).setMimeType(ContentService.MimeType.JSON);
     }
     
-    // 3. Borrar
     if (data.action === 'delete') {
           var rows = sheet.getDataRange().getValues();
           for (var i = 0; i < rows.length; i++) {
@@ -207,7 +194,6 @@ function handleRequest(e) {
           return ContentService.createTextOutput(JSON.stringify({ "success": false, "error": "ID not found" })).setMimeType(ContentService.MimeType.JSON);
     }
     
-    // 4. Actualizar Estado
     if (data.action === 'updateStatus') {
           var rows = sheet.getDataRange().getValues();
           for (var i = 0; i < rows.length; i++) {
@@ -218,10 +204,10 @@ function handleRequest(e) {
           }
     }
 
-    return ContentService.createTextOutput(JSON.stringify({ "error": "Unknown action", "received": data })).setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(JSON.stringify({ "error": "Unknown action: " + data.action })).setMimeType(ContentService.MimeType.JSON);
 
   } catch(e) {
-    return ContentService.createTextOutput(JSON.stringify({ "error": e.toString() })).setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(JSON.stringify({ "error": "EXCEPTION: " + e.toString() })).setMimeType(ContentService.MimeType.JSON);
   } finally {
     try { lock.releaseLock(); } catch(e) {}
   }
@@ -229,7 +215,7 @@ function handleRequest(e) {
 
   const copyCode = () => {
     navigator.clipboard.writeText(appScriptCode);
-    alert("¡Código v10 Copiado! Recuerda crear una NUEVA Implementación.");
+    alert("¡Código v11 Copiado!");
   };
 
   const headers = [
@@ -431,16 +417,22 @@ function handleRequest(e) {
           <div className="bg-slate-800/50 p-6 rounded-xl border border-white/5">
             <h3 className="text-lg font-semibold text-primary-400 mb-4 flex items-center">
                 <ServerIcon className="h-5 w-5 mr-2" />
-                Código Backend (v10 - Ultra Robusto)
+                Código Backend (v11 - Diagnóstico)
             </h3>
             
-            <div className="bg-yellow-500/10 border border-yellow-500/20 p-3 rounded-lg mb-4 flex items-start">
-               <RocketLaunchIcon className="h-5 w-5 text-yellow-500 mr-2 flex-shrink-0 mt-0.5" />
-               <div className="text-xs text-yellow-200">
-                  <span className="font-bold">¡PASO CRÍTICO!:</span><br/>
-                  1. Pega este nuevo código.<br/>
-                  2. <strong>Implementar &rarr; Nueva Implementación.</strong><br/>
-                  3. Si no creas una nueva implementación, seguirás usando el código viejo y fallará.
+            <div className="bg-yellow-500/10 border border-yellow-500/20 p-3 rounded-lg mb-4 flex flex-col gap-2">
+               <div className="flex items-start">
+                    <RocketLaunchIcon className="h-5 w-5 text-yellow-500 mr-2 flex-shrink-0 mt-0.5" />
+                    <div className="text-xs text-yellow-200">
+                        <span className="font-bold">¡PASOS OBLIGATORIOS!</span><br/>
+                        1. Pega este código nuevo.<br/>
+                        2. <strong>Implementar &rarr; Nueva Implementación.</strong><br/>
+                    </div>
+               </div>
+               <div className="bg-black/40 p-2 rounded text-[10px] text-gray-300 font-mono mt-1">
+                  <strong>Configuración Exacta:</strong><br/>
+                  - Ejecutar como: <strong>Yo (Me)</strong> &larr; (Muy importante)<br/>
+                  - Quién tiene acceso: <strong>Cualquier persona (Anyone)</strong>
                </div>
             </div>
 

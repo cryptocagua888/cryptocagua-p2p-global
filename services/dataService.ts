@@ -48,20 +48,18 @@ export const getOffers = (): Offer[] => {
 };
 
 // --- CORE SYNC FUNCTION ---
-const sendToSheet = async (payload: any): Promise<{success: boolean, errorType?: string}> => {
+// Updated to return errorMessage
+const sendToSheet = async (payload: any): Promise<{success: boolean, errorType?: string, errorMessage?: string}> => {
   const scriptUrl = getSheetUrl();
   if (!scriptUrl) return { success: false, errorType: 'NO_URL' };
 
   try {
-    // CAMBIO TÉCNICO: Usar URLSearchParams (Form Data)
-    // Esto es más robusto para Google Scripts que el JSON crudo
     const formData = new URLSearchParams();
     Object.keys(payload).forEach(key => {
         const value = payload[key];
         formData.append(key, typeof value === 'object' ? JSON.stringify(value) : String(value));
     });
 
-    // Petición Simple (Simple Request) que evita Preflight en muchos casos
     const response = await fetch(scriptUrl, {
       method: 'POST',
       redirect: 'follow',
@@ -77,7 +75,7 @@ const sendToSheet = async (payload: any): Promise<{success: boolean, errorType?:
 
     const text = await response.text();
     
-    // Detección de página de Login de Google (Error de Permisos)
+    // Check for HTML (Login page / Error page)
     if (text.trim().startsWith("<") || text.includes("<!DOCTYPE html>")) {
         console.error("HTML Response detected (Permission Error)");
         return { success: false, errorType: 'HTML_RESPONSE' };
@@ -87,17 +85,17 @@ const sendToSheet = async (payload: any): Promise<{success: boolean, errorType?:
         const json = JSON.parse(text);
         if (json.error) {
             console.error("Script Error:", json.error);
-            return { success: false, errorType: 'SCRIPT_ERROR' };
+            // Capturamos el mensaje exacto del script
+            return { success: false, errorType: 'SCRIPT_ERROR', errorMessage: json.error };
         }
     } catch(e) {
-        // Si no es JSON ni HTML obvio, algo raro pasa, pero quizás funcionó.
         console.warn("Non-JSON response:", text.substring(0, 50));
     }
     
     return { success: true };
-  } catch (e) {
+  } catch (e: any) {
     console.error("Connection Error:", e);
-    return { success: false, errorType: 'NETWORK_ERROR' };
+    return { success: false, errorType: 'NETWORK_ERROR', errorMessage: e.message };
   }
 };
 
@@ -109,7 +107,6 @@ export const fetchOffers = async (): Promise<Offer[]> => {
 
   try {
     console.log("📥 Descargando datos...");
-    // También usamos form data para lectura
     const formData = new URLSearchParams();
     formData.append('action', 'read');
 
@@ -195,13 +192,14 @@ export const testConnection = async (): Promise<{success: boolean, message: stri
   const sentResult = await sendToSheet(payload);
   
   if (!sentResult.success) {
-      // Diagnóstico detallado
       if (sentResult.errorType === 'HTML_RESPONSE') {
-          return { success: false, message: "❌ ERROR DE PERMISOS: El script devolvió una página de Login. Debes configurar 'Quién tiene acceso' a 'Cualquier persona' (Anyone)." };
+          return { success: false, message: "❌ ERROR PERMISOS: El script devolvió Login. Configura 'Quién tiene acceso' a 'Cualquier persona' (Anyone)." };
+      }
+      if (sentResult.errorType === 'SCRIPT_ERROR') {
+          return { success: false, message: `❌ ERROR SCRIPT: "${sentResult.errorMessage}". (¿Actualizaste el código a v11 y creaste Nueva Implementación?)` };
       }
       if (sentResult.errorType === 'NETWORK_ERROR') {
-          // Si falla la red, puede ser CORS, pero intentamos leer de todos modos por si acaso fue un "falso negativo"
-          console.warn("Error de red en escritura, intentando leer de todas formas...");
+          console.warn("Error de red en escritura, intentando leer de todas formas...", sentResult.errorMessage);
       } else {
           return { success: false, message: `Falló el envío (${sentResult.errorType}). Revisa la URL.` };
       }
