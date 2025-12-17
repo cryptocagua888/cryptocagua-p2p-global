@@ -120,9 +120,9 @@ export const fetchOffers = async (): Promise<Offer[]> => {
   if (!scriptUrl) return getOffers(); 
 
   try {
+    // Para LEER usamos text/plain y un body stringificado simple, esto suele funcionar bien para respuestas
     const response = await fetch(scriptUrl, {
       method: 'POST',
-      // IMPORTANTE: text/plain evita el preflight CORS que suele fallar en GAS
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({ action: 'read' })
     });
@@ -164,11 +164,17 @@ export const approveOffer = async (id: string) => {
   const scriptUrl = getSheetUrl();
   if (scriptUrl) {
     try {
+      // Usamos URLSearchParams para asegurar que llegue
+      const params = new URLSearchParams();
+      params.append('action', 'updateStatus');
+      params.append('id', id);
+      params.append('status', 'APPROVED');
+
       await fetch(scriptUrl, {
         method: 'POST',
         mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // Cambiado a text/plain
-        body: JSON.stringify({ action: 'updateStatus', id: id, status: 'APPROVED' })
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params
       });
     } catch(e) { console.error(e); }
   }
@@ -221,15 +227,21 @@ export const verifyServerPin = async (pin: string): Promise<boolean> => {
   
   // 2. Si no es la Master Key y no hay hoja, fallamos.
   if (!scriptUrl) {
-    console.log("Fallo: PIN no coincide con Vercel y no hay Hoja conectada.");
     return false;
   }
 
-  // 3. Intentamos validar con la Hoja (Legacy support)
+  // 3. Intentamos validar con la Hoja via Form Data
   try {
+    const params = new URLSearchParams();
+    params.append('action', 'auth');
+    params.append('pin', pin);
+
+    // Nota: Para recibir respuesta JSON, a veces se necesita redirect: follow. 
+    // Si no-cors es estricto, esto podría fallar, pero auth suele necesitar cors standard o text/plain.
+    // Mantenemos text/plain JSON para Auth porque necesitamos leer la respuesta.
     const response = await fetch(scriptUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // Cambiado a text/plain
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({ action: 'auth', pin: pin })
     });
     
@@ -239,7 +251,6 @@ export const verifyServerPin = async (pin: string): Promise<boolean> => {
     return result.success === true;
 
   } catch (e) {
-    console.warn('Fallo al conectar con hoja, y el PIN no era la Master Key.');
     return false;
   }
 };
@@ -279,15 +290,32 @@ export const syncWithGoogleSheets = async (offer: Offer): Promise<boolean> => {
   }
 
   try {
-    console.log("Enviando datos a Sheets...", offer);
+    console.log("Enviando datos a Sheets (Form Data)...", offer);
+    
+    // CAMBIO CRÍTICO: Usamos URLSearchParams
+    // Esto hace que Google Script lo reciba en e.parameter de forma fiable
+    const formData = new URLSearchParams();
+    formData.append('action', 'save');
+    formData.append('id', offer.id);
+    formData.append('createdAt', offer.createdAt);
+    formData.append('type', offer.type);
+    formData.append('category', offer.category);
+    formData.append('title', offer.title);
+    formData.append('asset', offer.asset);
+    formData.append('price', offer.price);
+    formData.append('location', offer.location);
+    formData.append('description', offer.description);
+    formData.append('contactInfo', offer.contactInfo);
+    formData.append('status', offer.status);
+    formData.append('nickname', offer.nickname);
+
     await fetch(scriptUrl, {
       method: 'POST',
-      mode: 'no-cors', // Opaque response
-      // CRÍTICO: Usar text/plain evita el preflight CORS que bloquea GAS
+      mode: 'no-cors', // Necesario para enviar datos a GAS sin preflight
       headers: {
-        'Content-Type': 'text/plain;charset=utf-8', 
+        'Content-Type': 'application/x-www-form-urlencoded', 
       },
-      body: JSON.stringify({ action: 'save', ...offer })
+      body: formData
     });
     
     console.log("Envío completado (sin confirmación por no-cors)");

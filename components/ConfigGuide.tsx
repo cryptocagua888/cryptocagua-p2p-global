@@ -80,17 +80,36 @@ export const ConfigGuide: React.FC = () => {
 
   const appScriptCode = `function doPost(e) {
   var lock = LockService.getScriptLock();
-  lock.tryLock(10000); // Evitar conflictos de escritura simultánea
+  lock.tryLock(10000);
 
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var data = JSON.parse(e.postData.contents);
     
-    // 1. OBTENER O CREAR HOJA DE OFERTAS
+    // --- LÓGICA HÍBRIDA: INTENTAR LEER FORM DATA O JSON ---
+    var data = null;
+    
+    // 1. Intento: Datos de formulario (URLSearchParams)
+    if (e.parameter && e.parameter.action) {
+       data = e.parameter;
+    } 
+    // 2. Intento: JSON Raw (fallback)
+    else if (e.postData && e.postData.contents) {
+       try {
+         data = JSON.parse(e.postData.contents);
+       } catch(err) {
+         // Si falla, data sigue null
+       }
+    }
+
+    if (!data) {
+       return ContentService.createTextOutput(JSON.stringify({ "error": "No data received" }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // --- CONFIGURAR HOJA ---
     var sheet = ss.getSheetByName("Ofertas");
     if (!sheet) {
       sheet = ss.insertSheet("Ofertas");
-      // Crear encabezados automáticamente si es nueva
       sheet.appendRow([
         "ID", "FECHA", "TIPO", "CATEGORIA", 
         "TITULO", "ACTIVO", "PRECIO", "UBICACION", 
@@ -111,12 +130,10 @@ export const ConfigGuide: React.FC = () => {
         .setMimeType(ContentService.MimeType.JSON);
     }
 
-    // --- ACCIÓN: READ (LEER OFERTAS) ---
+    // --- ACCIÓN: READ ---
     if (data.action === 'read') {
       var rows = sheet.getDataRange().getValues();
       var offers = [];
-      
-      // i=1 para saltar encabezados
       for (var i = 1; i < rows.length; i++) {
          var r = rows[i];
          if(r[0] && r[0] !== '') { 
@@ -136,7 +153,6 @@ export const ConfigGuide: React.FC = () => {
       var rows = sheet.getDataRange().getValues();
       for (var i = 0; i < rows.length; i++) {
         if (String(rows[i][0]) === String(data.id)) {
-          // Columna K es índice 10 + 1 = 11
           sheet.getRange(i + 1, 11).setValue(data.status);
           break;
         }
@@ -144,7 +160,7 @@ export const ConfigGuide: React.FC = () => {
       return ContentService.createTextOutput("Updated").setMimeType(ContentService.MimeType.TEXT);
     }
 
-    // --- ACCIÓN: SAVE (GUARDAR OFERTA) ---
+    // --- ACCIÓN: SAVE ---
     if (data.action === 'save') {
       sheet.appendRow([
         data.id, 
@@ -164,6 +180,10 @@ export const ConfigGuide: React.FC = () => {
       return ContentService.createTextOutput(JSON.stringify({ "success": true }))
         .setMimeType(ContentService.MimeType.JSON);
     }
+    
+    return ContentService.createTextOutput(JSON.stringify({ "error": "Unknown action" }))
+        .setMimeType(ContentService.MimeType.JSON);
+
   } catch(e) {
     return ContentService.createTextOutput(JSON.stringify({ "error": e.toString() }))
         .setMimeType(ContentService.MimeType.JSON);
@@ -360,7 +380,7 @@ export const ConfigGuide: React.FC = () => {
 
           {/* Script Code */}
           <div className="bg-slate-800/50 p-6 rounded-xl border border-white/5">
-            <h3 className="text-lg font-semibold text-primary-400 mb-4">Código Backend (Actualizado)</h3>
+            <h3 className="text-lg font-semibold text-primary-400 mb-4">Código Backend (Mejorado v3)</h3>
             <div className="relative bg-black/50 rounded-lg p-4 font-mono text-xs text-green-400 overflow-x-auto border border-gray-700">
                <button onClick={copyCode} className="absolute top-2 right-2 text-gray-400 hover:text-white bg-slate-700 p-1.5 rounded-md">
                  <ClipboardDocumentIcon className="h-4 w-4" />
