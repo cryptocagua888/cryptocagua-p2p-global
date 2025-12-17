@@ -79,78 +79,102 @@ export const ConfigGuide: React.FC = () => {
   };
 
   const appScriptCode = `function doPost(e) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var data = JSON.parse(e.postData.contents);
-  var sheet = ss.getSheets()[0]; // Hoja de Ofertas
-  
-  // --- ACCIÓN: AUTH ---
-  if (data.action === 'auth') {
-    var configSheet = ss.getSheetByName("Config");
-    if (!configSheet) {
-      configSheet = ss.insertSheet("Config");
-      configSheet.getRange("A1").setValue("ADMIN PIN");
-      configSheet.getRange("B1").setValue("2024");
-    }
-    var storedPin = configSheet.getRange("B1").getValue().toString();
-    return ContentService.createTextOutput(JSON.stringify({ "success": (data.pin.toString() === storedPin) }))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
+  var lock = LockService.getScriptLock();
+  lock.tryLock(10000); // Evitar conflictos de escritura simultánea
 
-  // --- ACCIÓN: READ (LEER OFERTAS) ---
-  if (data.action === 'read') {
-    var rows = sheet.getDataRange().getValues();
-    var offers = [];
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var data = JSON.parse(e.postData.contents);
     
-    // IMPORTANTE: Empezamos en i = 1 para saltar los encabezados de la Fila 1
-    for (var i = 1; i < rows.length; i++) {
-       var r = rows[i];
-       // Validamos que exista un ID (columna 0) para considerarlo oferta válida
-       if(r[0] && r[0] !== '') { 
-         offers.push({
-           id: r[0], createdAt: r[1], type: r[2], category: r[3],
-           title: r[4], asset: r[5], price: r[6], location: r[7],
-           description: r[8], contactInfo: r[9], status: r[10], nickname: r[11]
-         });
-       }
+    // 1. OBTENER O CREAR HOJA DE OFERTAS
+    var sheet = ss.getSheetByName("Ofertas");
+    if (!sheet) {
+      sheet = ss.insertSheet("Ofertas");
+      // Crear encabezados automáticamente si es nueva
+      sheet.appendRow([
+        "ID", "FECHA", "TIPO", "CATEGORIA", 
+        "TITULO", "ACTIVO", "PRECIO", "UBICACION", 
+        "DESCRIPCION", "CONTACTO", "ESTADO", "NICKNAME"
+      ]);
     }
-    return ContentService.createTextOutput(JSON.stringify({ "success": true, "data": offers }))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
-
-  // --- ACCIÓN: UPDATE STATUS ---
-  if (data.action === 'updateStatus') {
-    var rows = sheet.getDataRange().getValues();
-    for (var i = 0; i < rows.length; i++) {
-      // Convertimos a string para comparar seguros
-      if (String(rows[i][0]) === String(data.id)) {
-        // Columna K es índice 10 (Status), sumamos 1 porque getRange es base-1
-        sheet.getRange(i + 1, 11).setValue(data.status);
-        break;
+    
+    // --- ACCIÓN: AUTH ---
+    if (data.action === 'auth') {
+      var configSheet = ss.getSheetByName("Config");
+      if (!configSheet) {
+        configSheet = ss.insertSheet("Config");
+        configSheet.getRange("A1").setValue("ADMIN PIN");
+        configSheet.getRange("B1").setValue("2024");
       }
+      var storedPin = configSheet.getRange("B1").getValue().toString();
+      return ContentService.createTextOutput(JSON.stringify({ "success": (data.pin.toString() === storedPin) }))
+        .setMimeType(ContentService.MimeType.JSON);
     }
-    return ContentService.createTextOutput("Updated").setMimeType(ContentService.MimeType.TEXT);
-  }
 
-  // --- ACCIÓN: SAVE (GUARDAR OFERTA) ---
-  if (data.action === 'save') {
-    sheet.appendRow([
-      data.id, data.createdAt, data.type, data.category, 
-      data.title, data.asset, data.price, data.location, 
-      data.description, data.contactInfo, data.status, data.nickname
-    ]);
-    
-    try {
-      var email = Session.getEffectiveUser().getEmail();
-      MailApp.sendEmail({ to: email, subject: "NUEVA OFERTA P2P", body: "Revisar hoja de cálculo." });
-    } catch (e) {}
-    
-    return ContentService.createTextOutput(JSON.stringify({ "success": true })).setMimeType(ContentService.MimeType.JSON);
+    // --- ACCIÓN: READ (LEER OFERTAS) ---
+    if (data.action === 'read') {
+      var rows = sheet.getDataRange().getValues();
+      var offers = [];
+      
+      // i=1 para saltar encabezados
+      for (var i = 1; i < rows.length; i++) {
+         var r = rows[i];
+         if(r[0] && r[0] !== '') { 
+           offers.push({
+             id: r[0], createdAt: r[1], type: r[2], category: r[3],
+             title: r[4], asset: r[5], price: r[6], location: r[7],
+             description: r[8], contactInfo: r[9], status: r[10], nickname: r[11]
+           });
+         }
+      }
+      return ContentService.createTextOutput(JSON.stringify({ "success": true, "data": offers }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // --- ACCIÓN: UPDATE STATUS ---
+    if (data.action === 'updateStatus') {
+      var rows = sheet.getDataRange().getValues();
+      for (var i = 0; i < rows.length; i++) {
+        if (String(rows[i][0]) === String(data.id)) {
+          // Columna K es índice 10 + 1 = 11
+          sheet.getRange(i + 1, 11).setValue(data.status);
+          break;
+        }
+      }
+      return ContentService.createTextOutput("Updated").setMimeType(ContentService.MimeType.TEXT);
+    }
+
+    // --- ACCIÓN: SAVE (GUARDAR OFERTA) ---
+    if (data.action === 'save') {
+      sheet.appendRow([
+        data.id, 
+        data.createdAt, 
+        data.type, 
+        data.category, 
+        data.title, 
+        data.asset, 
+        data.price, 
+        data.location, 
+        data.description, 
+        data.contactInfo, 
+        data.status, 
+        data.nickname
+      ]);
+      
+      return ContentService.createTextOutput(JSON.stringify({ "success": true }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+  } catch(e) {
+    return ContentService.createTextOutput(JSON.stringify({ "error": e.toString() }))
+        .setMimeType(ContentService.MimeType.JSON);
+  } finally {
+    lock.releaseLock();
   }
 }`;
 
   const copyCode = () => {
     navigator.clipboard.writeText(appScriptCode);
-    alert("Código actualizado copiado al portapapeles");
+    alert("Código actualizado copiado al portapapeles. RECUERDA: Implementar -> Nueva Implementación en Google Apps Script.");
   };
 
   const headers = [
@@ -323,7 +347,7 @@ export const ConfigGuide: React.FC = () => {
                 Estructura de la Hoja
             </h3>
             <p className="text-sm text-gray-300 mb-4">
-                En tu Google Sheet, en la <strong>Fila 1</strong>, escribe estos títulos en orden (Columnas A - L):
+                El nuevo script creará automáticamente una hoja llamada <strong>"Ofertas"</strong>. Asegúrate de tener permisos de edición.
             </p>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 {headers.map((h) => (
@@ -336,13 +360,16 @@ export const ConfigGuide: React.FC = () => {
 
           {/* Script Code */}
           <div className="bg-slate-800/50 p-6 rounded-xl border border-white/5">
-            <h3 className="text-lg font-semibold text-primary-400 mb-4">Código Backend</h3>
+            <h3 className="text-lg font-semibold text-primary-400 mb-4">Código Backend (Actualizado)</h3>
             <div className="relative bg-black/50 rounded-lg p-4 font-mono text-xs text-green-400 overflow-x-auto border border-gray-700">
                <button onClick={copyCode} className="absolute top-2 right-2 text-gray-400 hover:text-white bg-slate-700 p-1.5 rounded-md">
                  <ClipboardDocumentIcon className="h-4 w-4" />
                </button>
                <pre>{appScriptCode}</pre>
             </div>
+            <p className="mt-2 text-xs text-red-400 font-bold">
+               IMPORTANTE: Después de copiar esto en Google Scripts, debes hacer "Nueva Implementación" y seleccionar "Cualquier persona" en acceso.
+            </p>
           </div>
 
         </div>

@@ -122,6 +122,7 @@ export const fetchOffers = async (): Promise<Offer[]> => {
   try {
     const response = await fetch(scriptUrl, {
       method: 'POST',
+      // IMPORTANTE: text/plain evita el preflight CORS que suele fallar en GAS
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({ action: 'read' })
     });
@@ -166,7 +167,7 @@ export const approveOffer = async (id: string) => {
       await fetch(scriptUrl, {
         method: 'POST',
         mode: 'no-cors',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // Cambiado a text/plain
         body: JSON.stringify({ action: 'updateStatus', id: id, status: 'APPROVED' })
       });
     } catch(e) { console.error(e); }
@@ -211,8 +212,6 @@ export const verifyServerPin = async (pin: string): Promise<boolean> => {
   console.log("Intento de Auth con PIN:", pin);
   
   // 1. MASTER KEY CHECK (PRIORIDAD MÁXIMA)
-  // Si el PIN coincide con la variable de entorno, entramos SIEMPRE.
-  // Esto ignora si la hoja de cálculo tiene otro PIN o si está caída.
   if (RESCUE_PIN && pin === RESCUE_PIN) {
     console.log("Autenticación exitosa por Variable de Entorno (Master Key)");
     return true;
@@ -230,7 +229,7 @@ export const verifyServerPin = async (pin: string): Promise<boolean> => {
   try {
     const response = await fetch(scriptUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // Cambiado a text/plain
       body: JSON.stringify({ action: 'auth', pin: pin })
     });
     
@@ -280,15 +279,18 @@ export const syncWithGoogleSheets = async (offer: Offer): Promise<boolean> => {
   }
 
   try {
+    console.log("Enviando datos a Sheets...", offer);
     await fetch(scriptUrl, {
       method: 'POST',
-      mode: 'no-cors', 
+      mode: 'no-cors', // Opaque response
+      // CRÍTICO: Usar text/plain evita el preflight CORS que bloquea GAS
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'text/plain;charset=utf-8', 
       },
       body: JSON.stringify({ action: 'save', ...offer })
     });
     
+    console.log("Envío completado (sin confirmación por no-cors)");
     return true;
   } catch (e) {
     console.error('Error syncing with Google Sheets', e);
