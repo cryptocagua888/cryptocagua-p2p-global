@@ -218,10 +218,11 @@ export const testConnection = async (): Promise<{success: boolean, message: stri
       const found = remoteData.find(o => o.id === testId);
       
       if (found) {
-          deleteOffer(testId); // Limpiar
+          // NO BORRAMOS EL DATO para que el usuario pueda verificarlo en la hoja.
+          // deleteOffer(testId); 
           return { 
               success: true, 
-              message: `¡CONEXIÓN EXITOSA! ✅ Se escribió y leyó el ID ${testId} correctamente.` 
+              message: `¡CONEXIÓN EXITOSA! ✅ El ID ${testId} se guardó y se leyó correctamente. Revisa tu Google Sheet, debería aparecer al final.` 
           };
       } else {
           if (!sentResult.success) {

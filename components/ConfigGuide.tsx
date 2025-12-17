@@ -365,6 +365,33 @@ function handleRequest(e) {
             </div>
           </div>
 
+          {/* Magic Link Section - RESTORED */}
+          <div className="bg-gradient-to-r from-purple-900/20 to-primary-900/20 p-6 rounded-xl border border-primary-500/20">
+            <h3 className="text-lg font-semibold text-white mb-2 flex items-center">
+              <SparklesIcon className="h-5 w-5 mr-2 text-yellow-400" />
+              Link Mágico de Configuración
+            </h3>
+            <p className="text-sm text-gray-400 mb-4">
+              Comparte este link con tus usuarios para que su App se conecte automáticamente a esta base de datos sin tener que escribir la URL manualmente.
+            </p>
+            <div className="flex gap-3">
+               <input 
+                  type="text" 
+                  readOnly 
+                  value={getMagicLink()} 
+                  className="flex-1 bg-black/30 border border-white/10 rounded-lg px-3 text-gray-500 text-xs font-mono truncate"
+               />
+               <button 
+                 onClick={copyMagicLink}
+                 disabled={!isUrlConfigured}
+                 className="bg-white text-slate-900 hover:bg-gray-200 font-bold px-4 py-2 rounded-lg text-sm transition-colors flex items-center disabled:opacity-50"
+               >
+                 <ShareIcon className="h-4 w-4 mr-2" />
+                 Copiar
+               </button>
+            </div>
+          </div>
+
           <div className="border-t border-white/10 my-6"></div>
           
           <h3 className="text-xl font-bold text-white mb-4">Guía Técnica</h3>
