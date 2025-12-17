@@ -13,10 +13,14 @@ const GLOBAL_SCRIPT_URL = '';
 
 // CAMBIO: PIN DE RESCATE (SERVER SIDE)
 // Ya no usamos '1234'. Usamos la variable de entorno configurada en Vercel.
-// Soporta prefijos VITE_ y REACT_APP_ por si acaso.
+// Soporta prefijos VITE_, REACT_APP_ y NEXT_PUBLIC_
 const RESCUE_PIN = process.env.ADMIN_PIN || 
                    process.env.VITE_ADMIN_PIN || 
-                   process.env.REACT_APP_ADMIN_PIN;
+                   process.env.REACT_APP_ADMIN_PIN ||
+                   process.env.NEXT_PUBLIC_ADMIN_PIN;
+
+// Helper para verificar si el PIN está cargado (para diagnóstico)
+export const isPinConfigured = () => !!RESCUE_PIN && RESCUE_PIN.length > 0;
 
 // CAMBIO: Data inicial vacía.
 const INITIAL_DATA: Offer[] = [];

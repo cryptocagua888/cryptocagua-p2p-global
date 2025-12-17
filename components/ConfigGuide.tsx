@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { saveSheetUrl, getSheetUrl, saveAdminEmail, getAdminEmail, setAdminSession, isAdmin, verifyServerPin } from '../services/dataService';
-import { ClipboardDocumentIcon, CheckIcon, LockClosedIcon, EnvelopeIcon, ArrowRightOnRectangleIcon, GlobeAmericasIcon, ServerIcon, TableCellsIcon, KeyIcon, ExclamationTriangleIcon, ShareIcon, SparklesIcon } from '@heroicons/react/24/outline';
+import { saveSheetUrl, getSheetUrl, saveAdminEmail, getAdminEmail, setAdminSession, isAdmin, verifyServerPin, isPinConfigured } from '../services/dataService';
+import { isAiConfigured } from '../services/geminiService';
+import { ClipboardDocumentIcon, CheckIcon, LockClosedIcon, EnvelopeIcon, ArrowRightOnRectangleIcon, GlobeAmericasIcon, ServerIcon, TableCellsIcon, KeyIcon, ExclamationTriangleIcon, ShareIcon, SparklesIcon, SignalIcon, SignalSlashIcon } from '@heroicons/react/24/outline';
 
 export const ConfigGuide: React.FC = () => {
   const [url, setUrl] = useState('');
@@ -11,9 +12,16 @@ export const ConfigGuide: React.FC = () => {
   const [pin, setPin] = useState('');
   const [loading, setLoading] = useState(false);
   
+  // Status flags
+  const [hasEnvPin, setHasEnvPin] = useState(false);
+  const [hasEnvAi, setHasEnvAi] = useState(false);
+  
   useEffect(() => {
     setUrl(getSheetUrl());
     setEmail(getAdminEmail());
+    setHasEnvPin(isPinConfigured());
+    setHasEnvAi(isAiConfigured());
+    
     if (isAdmin()) {
       setIsAuthenticated(true);
     }
@@ -29,7 +37,7 @@ export const ConfigGuide: React.FC = () => {
       setIsAuthenticated(true);
       setAdminSession(true);
     } else {
-      alert('PIN Incorrecto. Verifique su ADMIN_PIN en Vercel o el PIN en la Hoja de Cálculo.');
+      alert('PIN Incorrecto. Verifique su VITE_ADMIN_PIN en Vercel o el PIN en la Hoja de Cálculo.');
       setPin('');
     }
     setLoading(false);
@@ -182,12 +190,27 @@ export const ConfigGuide: React.FC = () => {
           </form>
           
           <div className="mt-6 text-[10px] text-gray-500 bg-slate-900/50 p-3 rounded-lg border border-slate-700 text-left">
-             <p className="font-bold text-gray-300 mb-1 border-b border-gray-700 pb-1">¿Qué PIN debo usar?</p>
-             <ul className="space-y-1 mt-1">
-               <li><span className="text-green-500 font-bold">1. Sin Conexión:</span> Usa la variable <code>ADMIN_PIN</code> configurada en Vercel.</li>
-               <li><span className="text-blue-500 font-bold">2. Conectado:</span> Usa el PIN definido en la Hoja de Cálculo (Celda B1).</li>
-               <li><span className="text-red-500 font-bold">3. Nota:</span> El PIN "1234" ya no está disponible por seguridad.</li>
-             </ul>
+             <div className="flex justify-between items-center mb-2 pb-2 border-b border-gray-700">
+               <span className="font-bold text-gray-300">Diagnóstico del Sistema:</span>
+             </div>
+             
+             <div className="flex items-center justify-between mb-1">
+                <span>PIN Variable (VITE_ADMIN_PIN)</span>
+                {hasEnvPin ? (
+                  <span className="text-green-400 flex items-center"><SignalIcon className="h-3 w-3 mr-1"/> Detectado</span>
+                ) : (
+                  <span className="text-red-400 flex items-center"><SignalSlashIcon className="h-3 w-3 mr-1"/> No Detectado</span>
+                )}
+             </div>
+             
+             <div className="flex items-center justify-between">
+                <span>API Key IA (VITE_API_KEY)</span>
+                {hasEnvAi ? (
+                  <span className="text-green-400 flex items-center"><SignalIcon className="h-3 w-3 mr-1"/> Detectado</span>
+                ) : (
+                  <span className="text-red-400 flex items-center"><SignalSlashIcon className="h-3 w-3 mr-1"/> No Detectado</span>
+                )}
+             </div>
           </div>
         </div>
       </div>
@@ -236,7 +259,7 @@ export const ConfigGuide: React.FC = () => {
             <div className="text-sm text-gray-300">
                <p className="mb-2">Actualmente tu PIN se gestiona desde Google Sheets o Vercel:</p>
                <ol className="list-decimal list-inside space-y-1 text-gray-400">
-                  <li><strong>Modo Offline:</strong> Variable de entorno <code>ADMIN_PIN</code>.</li>
+                  <li><strong>Modo Offline:</strong> Variable <code>VITE_ADMIN_PIN</code> {hasEnvPin ? <span className="text-green-500">(Activa)</span> : <span className="text-red-500">(Inactiva)</span>}.</li>
                   <li><strong>Modo Online:</strong> Celda <strong>B1</strong> en la hoja "Config".</li>
                </ol>
             </div>

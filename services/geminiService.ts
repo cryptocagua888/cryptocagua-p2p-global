@@ -1,20 +1,24 @@
 import { GoogleGenAI } from "@google/genai";
 
 // INTENTO DE DETECCIÓN ROBUSTA DE API KEY
-// Busca en todas las variantes comunes de variables de entorno para asegurar compatibilidad con Vercel/Vite/CRA
+// Busca en todas las variantes comunes de variables de entorno para asegurar compatibilidad con Vercel/Vite/CRA/Next
 const getApiKey = () => {
   return process.env.API_KEY || 
          process.env.VITE_API_KEY || 
          process.env.REACT_APP_API_KEY || 
+         process.env.NEXT_PUBLIC_API_KEY ||
          '';
 };
 
 const apiKey = getApiKey();
 const ai = new GoogleGenAI({ apiKey: apiKey });
 
+// Helper para verificar estado desde la UI
+export const isAiConfigured = () => !!apiKey && apiKey.length > 0;
+
 export const generateDescription = async (title: string, category: string): Promise<string> => {
   if (!apiKey) {
-    console.error("API Key no encontrada. Configure API_KEY en Vercel.");
+    console.error("API Key no encontrada. Configure VITE_API_KEY en Vercel.");
     return "Error: API Key de IA no configurada en el servidor.";
   }
 
@@ -45,7 +49,7 @@ export const generateDescription = async (title: string, category: string): Prom
 
 export const analyzeOffer = async (offerDetails: string): Promise<string> => {
   if (!apiKey) {
-    console.error("API Key no encontrada. Configure API_KEY en Vercel.");
+    console.error("API Key no encontrada. Configure VITE_API_KEY en Vercel.");
     return "Error: API Key de IA no configurada en el servidor.";
   }
 
