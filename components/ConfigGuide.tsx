@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { saveSheetUrl, getSheetUrl, saveAdminEmail, getAdminEmail, setAdminSession, isAdmin, verifyServerPin, isPinConfigured, testConnection } from '../services/dataService';
+import { saveSheetUrl, getSheetUrl, saveAdminEmail, getAdminEmail, setAdminSession, isAdmin, verifyServerPin, isPinConfigured, testConnection, validateSheetUrl, getBrowserTestLink } from '../services/dataService';
 import { isAiConfigured } from '../services/geminiService';
-import { ClipboardDocumentIcon, CheckIcon, LockClosedIcon, EnvelopeIcon, ArrowRightOnRectangleIcon, GlobeAmericasIcon, ServerIcon, TableCellsIcon, KeyIcon, ExclamationTriangleIcon, ShareIcon, SparklesIcon, SignalIcon, SignalSlashIcon, BoltIcon } from '@heroicons/react/24/outline';
+import { ClipboardDocumentIcon, CheckIcon, LockClosedIcon, EnvelopeIcon, ArrowRightOnRectangleIcon, GlobeAmericasIcon, ServerIcon, TableCellsIcon, KeyIcon, ExclamationTriangleIcon, ShareIcon, SparklesIcon, SignalIcon, SignalSlashIcon, BoltIcon, RocketLaunchIcon, GlobeAltIcon } from '@heroicons/react/24/outline';
 
 export const ConfigGuide: React.FC = () => {
   const [url, setUrl] = useState('');
+  const [urlError, setUrlError] = useState('');
   const [email, setEmail] = useState('');
   const [saved, setSaved] = useState(false);
   const [emailSaved, setEmailSaved] = useState(false);
@@ -29,17 +30,28 @@ export const ConfigGuide: React.FC = () => {
     }
   }, []);
 
+  // Validation Effect
+  useEffect(() => {
+    if(url.length > 10) {
+        const validation = validateSheetUrl(url);
+        setUrlError(validation.error || '');
+    } else {
+        setUrlError('');
+    }
+  }, [url]);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     
+    // Verificación puramente local/env
     const isValid = await verifyServerPin(pin);
     
     if (isValid) {
       setIsAuthenticated(true);
       setAdminSession(true);
     } else {
-      alert('PIN Incorrecto. Verifique VITE_ADMIN_PIN en Vercel.');
+      alert('PIN Incorrecto. Asegúrate de configurar VITE_ADMIN_PIN en las variables de entorno.');
       setPin('');
     }
     setLoading(false);
@@ -52,6 +64,9 @@ export const ConfigGuide: React.FC = () => {
   };
 
   const handleSaveUrl = () => {
+    if(validateSheetUrl(url).valid === false) {
+        if(!window.confirm("La URL parece incorrecta. ¿Guardar de todos modos?")) return;
+    }
     saveSheetUrl(url);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -92,114 +107,101 @@ export const ConfigGuide: React.FC = () => {
     alert("¡Link Mágico copiado! Envíalo a tus usuarios.");
   };
 
-  const appScriptCode = `function doPost(e) {
+  const appScriptCode = `// --- CÓDIGO FINAL v8 (SIN CONFIG/SIN PIN) ---
+// Este script solo maneja datos. La seguridad del admin se maneja en la App (Vercel).
+
+function doGet(e) {
+  return handleRequest(e);
+}
+
+function doPost(e) {
+  return handleRequest(e);
+}
+
+function handleRequest(e) {
   var lock = LockService.getScriptLock();
-  lock.tryLock(10000);
+  lock.tryLock(5000); 
 
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
-    
-    // --- LÓGICA ROBUSTA PARA LEER EL CUERPO ---
-    var data;
-    try {
-      // 1. Intentamos parsear JSON directamente (Lo más común)
-      data = JSON.parse(e.postData.contents);
-    } catch(err) {
-      // 2. Si falla, verificamos si llegó como parámetro
-      data = e.parameter;
+    var data = null;
+
+    // 1. Leer JSON body
+    if (e.postData && e.postData.contents) {
+      try { data = JSON.parse(e.postData.contents); } catch(err) {}
+    }
+    // 2. Leer Parámetros URL
+    if (!data && e.parameter) {
+       data = e.parameter;
     }
 
-    // Validación básica
-    if (!data || (!data.action && !data.id)) {
-       return ContentService.createTextOutput(JSON.stringify({ "error": "No valid data received", "raw": e.postData.contents }))
-        .setMimeType(ContentService.MimeType.JSON);
+    if (!data) {
+       return ContentService.createTextOutput(JSON.stringify({ "error": "No data" })).setMimeType(ContentService.MimeType.JSON);
     }
 
-    // --- CONFIGURAR HOJA SI NO EXISTE ---
+    // --- SOLO USAMOS LA HOJA "OFERTAS" ---
     var sheet = ss.getSheetByName("Ofertas");
     if (!sheet) {
       sheet = ss.insertSheet("Ofertas");
-      sheet.appendRow([
-        "ID", "FECHA", "TIPO", "CATEGORIA", 
-        "TITULO", "ACTIVO", "PRECIO", "UBICACION", 
-        "DESCRIPCION", "CONTACTO", "ESTADO", "NICKNAME"
-      ]);
-    }
-    
-    // --- ACCIÓN: AUTH ---
-    if (data.action === 'auth') {
-      var configSheet = ss.getSheetByName("Config");
-      if (!configSheet) {
-        configSheet = ss.insertSheet("Config");
-        configSheet.getRange("A1").setValue("ADMIN PIN");
-        configSheet.getRange("B1").setValue("2024");
-      }
-      var storedPin = configSheet.getRange("B1").getValue().toString();
-      var isMatch = (data.pin && data.pin.toString() === storedPin);
-      return ContentService.createTextOutput(JSON.stringify({ "success": isMatch }))
-        .setMimeType(ContentService.MimeType.JSON);
+      sheet.appendRow(["ID", "FECHA", "TIPO", "CATEGORIA", "TITULO", "ACTIVO", "PRECIO", "UBICACION", "DESCRIPCION", "CONTACTO", "ESTADO", "NICKNAME"]);
     }
 
-    // --- ACCIÓN: READ ---
+    // --- GUARDAR (SAVE) ---
+    if (data.id) {
+       // Si es borrar (delete logic simple: agregar estado DELETED o implementar borrado real si prefieres)
+       if (data.action === 'delete') {
+          // Implementación opcional de borrado real
+          var rows = sheet.getDataRange().getValues();
+          for (var i = 0; i < rows.length; i++) {
+            if (String(rows[i][0]) === String(data.id)) {
+              sheet.deleteRow(i + 1);
+              return ContentService.createTextOutput(JSON.stringify({ "success": true, "action": "deleted" })).setMimeType(ContentService.MimeType.JSON);
+            }
+          }
+       }
+
+       // Update Status
+       if (data.action === 'updateStatus') {
+          var rows = sheet.getDataRange().getValues();
+          for (var i = 0; i < rows.length; i++) {
+            if (String(rows[i][0]) === String(data.id)) {
+              sheet.getRange(i + 1, 11).setValue(data.status);
+              return ContentService.createTextOutput(JSON.stringify({ "success": true, "action": "updated" })).setMimeType(ContentService.MimeType.JSON);
+            }
+          }
+       }
+    
+      // Guardar Nuevo
+      var date = data.createdAt || new Date().toISOString();
+      sheet.appendRow([
+        data.id, date, data.type || 'TEST', data.category, data.title, 
+        data.asset, data.price, data.location, data.description, 
+        data.contactInfo, data.status || 'PENDING', data.nickname
+      ]);
+      
+      return ContentService.createTextOutput(JSON.stringify({ "success": true })).setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    // --- LEER (READ) ---
     if (data.action === 'read') {
       var rows = sheet.getDataRange().getValues();
       var offers = [];
-      // Empezamos en 1 para saltar cabeceras
       for (var i = 1; i < rows.length; i++) {
-         var r = rows[i];
-         if(r[0] && r[0] !== '') { 
+         if(rows[i][0]) { 
            offers.push({
-             id: r[0], createdAt: r[1], type: r[2], category: r[3],
-             title: r[4], asset: r[5], price: r[6], location: r[7],
-             description: r[8], contactInfo: r[9], status: r[10], nickname: r[11]
+             id: rows[i][0], createdAt: rows[i][1], type: rows[i][2], category: rows[i][3],
+             title: rows[i][4], asset: rows[i][5], price: rows[i][6], location: rows[i][7],
+             description: rows[i][8], contactInfo: rows[i][9], status: rows[i][10], nickname: rows[i][11]
            });
          }
       }
-      return ContentService.createTextOutput(JSON.stringify({ "success": true, "data": offers }))
-        .setMimeType(ContentService.MimeType.JSON);
+      return ContentService.createTextOutput(JSON.stringify({ "success": true, "data": offers })).setMimeType(ContentService.MimeType.JSON);
     }
 
-    // --- ACCIÓN: UPDATE STATUS ---
-    if (data.action === 'updateStatus') {
-      var rows = sheet.getDataRange().getValues();
-      for (var i = 0; i < rows.length; i++) {
-        if (String(rows[i][0]) === String(data.id)) {
-          sheet.getRange(i + 1, 11).setValue(data.status);
-          break;
-        }
-      }
-      return ContentService.createTextOutput(JSON.stringify({ "success": true }))
-        .setMimeType(ContentService.MimeType.JSON);
-    }
-
-    // --- ACCIÓN: SAVE (DEFAULT) ---
-    // Si tiene ID y fecha, asumimos que es guardar
-    if (data.id && data.createdAt) {
-      sheet.appendRow([
-        data.id, 
-        data.createdAt, 
-        data.type, 
-        data.category, 
-        data.title, 
-        data.asset, 
-        data.price, 
-        data.location, 
-        data.description, 
-        data.contactInfo, 
-        data.status, 
-        data.nickname
-      ]);
-      
-      return ContentService.createTextOutput(JSON.stringify({ "success": true }))
-        .setMimeType(ContentService.MimeType.JSON);
-    }
-    
-    return ContentService.createTextOutput(JSON.stringify({ "error": "Unknown action or invalid data structure" }))
-        .setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(JSON.stringify({ "error": "Accion desconocida" })).setMimeType(ContentService.MimeType.JSON);
 
   } catch(e) {
-    return ContentService.createTextOutput(JSON.stringify({ "error": e.toString() }))
-        .setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(JSON.stringify({ "error": e.toString() })).setMimeType(ContentService.MimeType.JSON);
   } finally {
     lock.releaseLock();
   }
@@ -207,7 +209,7 @@ export const ConfigGuide: React.FC = () => {
 
   const copyCode = () => {
     navigator.clipboard.writeText(appScriptCode);
-    alert("Código actualizado copiado al portapapeles. RECUERDA: Implementar -> Nueva Implementación en Google Apps Script.");
+    alert("¡Código v8 (Sin PIN) copiado! Actualiza tu Script en Google.");
   };
 
   const headers = [
@@ -225,14 +227,14 @@ export const ConfigGuide: React.FC = () => {
           </div>
           <h2 className="text-xl font-bold text-white mb-2">Acceso Administrativo</h2>
           <p className="text-gray-400 text-sm mb-6 flex items-center justify-center gap-1">
-             Seguridad gestionada por variables de entorno
+             Ingresa tu PIN Maestro
           </p>
           <form onSubmit={handleLogin}>
             <input
               type="password"
               value={pin}
               onChange={(e) => setPin(e.target.value)}
-              placeholder="Ingrese PIN"
+              placeholder="PIN Maestro"
               className="w-full text-center text-2xl tracking-[0.5em] bg-slate-900 border border-slate-700 rounded-xl p-3 text-white mb-4 focus:ring-2 focus:ring-primary-500 outline-none"
               autoFocus
               disabled={loading}
@@ -247,32 +249,19 @@ export const ConfigGuide: React.FC = () => {
           </form>
           
           <div className="mt-6 text-[10px] text-gray-500 bg-slate-900/50 p-3 rounded-lg border border-slate-700 text-left">
-             <div className="flex justify-between items-center mb-2 pb-2 border-b border-gray-700">
-               <span className="font-bold text-gray-300">Diagnóstico del Sistema:</span>
-             </div>
-             
              <div className="flex items-center justify-between mb-1">
                 <span>PIN Variable (VITE_ADMIN_PIN)</span>
                 {hasEnvPin ? (
-                  <span className="text-green-400 flex items-center"><SignalIcon className="h-3 w-3 mr-1"/> Detectado (Llave Maestra)</span>
+                  <span className="text-green-400 flex items-center"><SignalIcon className="h-3 w-3 mr-1"/> Configurado</span>
                 ) : (
-                  <span className="text-red-400 flex items-center"><SignalSlashIcon className="h-3 w-3 mr-1"/> No Detectado</span>
+                  <span className="text-red-400 flex items-center"><SignalSlashIcon className="h-3 w-3 mr-1"/> No Configurado</span>
                 )}
              </div>
-             
-             <div className="flex items-center justify-between mb-1">
-                <span>API Key IA (VITE_API_KEY)</span>
-                {hasEnvAi ? (
-                  <span className="text-green-400 flex items-center"><SignalIcon className="h-3 w-3 mr-1"/> Detectado</span>
-                ) : (
-                  <span className="text-red-400 flex items-center"><SignalSlashIcon className="h-3 w-3 mr-1"/> No Detectado</span>
-                )}
-             </div>
-
-             <div className="mt-2 pt-2 border-t border-gray-700 text-gray-400">
-                <p className="mb-1 text-yellow-500 font-bold">Nota:</p>
-                <p>Si VITE_ADMIN_PIN está configurado, tendrá prioridad sobre cualquier PIN en Google Sheets.</p>
-             </div>
+             {!hasEnvPin && (
+                 <p className="text-red-400 mt-2">
+                     ⚠ Debes configurar la variable de entorno <code>VITE_ADMIN_PIN</code> en Vercel o en tu archivo .env local para poder entrar.
+                 </p>
+             )}
           </div>
         </div>
       </div>
@@ -280,6 +269,7 @@ export const ConfigGuide: React.FC = () => {
   }
 
   const isUrlConfigured = url && url.length > 10;
+  const browserTestLink = getBrowserTestLink(url);
 
   return (
     <div className="max-w-4xl mx-auto py-10 px-4 pb-32">
@@ -319,10 +309,9 @@ export const ConfigGuide: React.FC = () => {
               Gestión del PIN
             </h3>
             <div className="text-sm text-gray-300">
-               <p className="mb-2">Actualmente tu PIN se gestiona desde Google Sheets o Vercel:</p>
+               <p className="mb-2">El PIN ahora se gestiona exclusivamente por Seguridad de Entorno:</p>
                <ol className="list-decimal list-inside space-y-1 text-gray-400">
-                  <li><strong>Llave Maestra (Vercel):</strong> Variable <code>VITE_ADMIN_PIN</code> {hasEnvPin ? <span className="text-green-500 font-bold">ACTIVA</span> : <span className="text-red-500">INACTIVA</span>}.</li>
-                  <li><strong>PIN Hoja (Secundario):</strong> Celda <strong>B1</strong> en la hoja "Config" (si Vercel falla).</li>
+                  <li><strong>VITE_ADMIN_PIN:</strong> {hasEnvPin ? <span className="text-green-500 font-bold">ACTIVO</span> : <span className="text-red-500">INACTIVO (Configurar en Vercel)</span>}.</li>
                </ol>
             </div>
           </div>
@@ -330,70 +319,52 @@ export const ConfigGuide: React.FC = () => {
           {/* Connect */}
           <div className="bg-slate-800/50 p-6 rounded-xl border border-white/5">
             <h3 className="text-lg font-semibold text-primary-400 mb-4">Paso 1: Conexión (URL del Script)</h3>
-            <div className="flex gap-3">
-              <input 
-                type="text" 
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder="https://script.google.com/macros/s/..."
-                className="flex-1 rounded-lg bg-slate-950 border border-slate-700 p-3 text-white"
-              />
-              <button onClick={handleSaveUrl} className="bg-primary-600 hover:bg-primary-500 text-white font-bold px-6 rounded-lg">
-                {saved ? <CheckIcon className="h-5 w-5" /> : 'Guardar'}
-              </button>
+            <div className="flex flex-col gap-2">
+              <div className="flex gap-3">
+                <input 
+                    type="text" 
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    placeholder="https://script.google.com/macros/s/.../exec"
+                    className={`flex-1 rounded-lg bg-slate-950 border p-3 text-white transition-colors ${urlError ? 'border-red-500 focus:ring-red-500' : 'border-slate-700 focus:ring-primary-500'}`}
+                />
+                <button onClick={handleSaveUrl} className="bg-primary-600 hover:bg-primary-500 text-white font-bold px-6 rounded-lg">
+                    {saved ? <CheckIcon className="h-5 w-5" /> : 'Guardar'}
+                </button>
+              </div>
+              
+              {urlError && (
+                 <div className="text-xs text-red-400 font-bold flex items-center bg-red-900/10 p-2 rounded">
+                    <ExclamationTriangleIcon className="h-4 w-4 mr-1" />
+                    {urlError}
+                 </div>
+              )}
             </div>
             
-            <div className="mt-4 pt-4 border-t border-white/5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                 <div>
-                    <h4 className="text-sm font-bold text-white">Prueba de Conexión</h4>
-                    <p className="text-xs text-gray-400">Esto enviará una fila de prueba a tu hoja.</p>
-                 </div>
-                 <button 
-                   onClick={handleTestConnection} 
-                   disabled={testing || !isUrlConfigured}
-                   className="flex items-center px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-bold transition-colors disabled:opacity-50"
-                 >
-                    {testing ? (
-                        <ArrowPathIcon className="h-4 w-4 animate-spin mr-2" />
-                    ) : (
-                        <BoltIcon className="h-4 w-4 mr-2 text-yellow-400" />
-                    )}
-                    {testing ? 'Probando...' : 'Probar Conexión'}
-                 </button>
-            </div>
-            
-            {testResult && (
-                <div className={`mt-3 p-3 rounded-lg text-xs font-mono border ${testResult.success ? 'bg-green-500/10 border-green-500/30 text-green-400' : 'bg-red-500/10 border-red-500/30 text-red-400'}`}>
-                    {testResult.success && <CheckIcon className="h-4 w-4 inline mr-1" />}
-                    {testResult.message}
-                </div>
-            )}
-          </div>
-
-          {/* MAGIC LINK SECTION */}
-          {isUrlConfigured && (
-             <div className="bg-gradient-to-r from-violet-900/60 to-purple-900/60 p-6 rounded-xl border border-violet-500/50 shadow-lg relative overflow-hidden group">
-                 <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                    <SparklesIcon className="h-24 w-24 text-violet-400" />
-                 </div>
-                 <div className="relative z-10">
-                    <div className="flex items-center gap-2 mb-2 text-violet-300">
-                        <ShareIcon className="h-5 w-5" />
-                        <h3 className="text-lg font-bold text-white">Compartir Acceso (Link Mágico)</h3>
+            <div className="mt-4 pt-4 border-t border-white/5 flex flex-col gap-4">
+                 <div className="flex justify-between items-center">
+                    <div>
+                        <h4 className="text-sm font-bold text-white">Prueba Rápida</h4>
+                        <p className="text-xs text-gray-400">Envía datos a la hoja para verificar permisos.</p>
                     </div>
-                    <p className="text-sm text-gray-300 mb-4 max-w-lg">
-                       ¡Olvídate de explicarle a los usuarios cómo configurar la app! Copia este link y envíaselo. Al abrirlo, <strong>se conectarán automáticamente a tu base de datos</strong>.
-                    </p>
                     <button 
-                       onClick={copyMagicLink}
-                       className="flex items-center bg-white text-violet-900 font-bold px-5 py-3 rounded-lg hover:bg-gray-100 transition-colors shadow-lg"
+                    onClick={handleTestConnection} 
+                    disabled={testing || !isUrlConfigured}
+                    className="flex items-center px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-bold transition-colors disabled:opacity-50"
                     >
-                       <ClipboardDocumentIcon className="h-5 w-5 mr-2" />
-                       Copiar Link Mágico
+                        {testing ? <ArrowPathIcon className="h-4 w-4 animate-spin mr-2" /> : <BoltIcon className="h-4 w-4 mr-2 text-yellow-400" />}
+                        {testing ? 'Probando...' : 'Prueba App'}
                     </button>
                  </div>
-             </div>
-          )}
+                 
+                 {testResult && (
+                    <div className={`p-3 rounded-lg text-xs font-mono border ${testResult.success ? 'bg-green-500/10 border-green-500/30 text-green-400' : 'bg-red-500/10 border-red-500/30 text-red-400'}`}>
+                        {testResult.success && <CheckIcon className="h-4 w-4 inline mr-1" />}
+                        {testResult.message}
+                    </div>
+                 )}
+            </div>
+          </div>
 
           <div className="border-t border-white/10 my-6"></div>
           
@@ -403,35 +374,23 @@ export const ConfigGuide: React.FC = () => {
           <div className="bg-slate-800/50 p-6 rounded-xl border border-white/5">
              <h3 className="text-lg font-semibold text-primary-400 mb-4 flex items-center">
                 <TableCellsIcon className="h-5 w-5 mr-2" />
-                Estructura de la Hoja (Base de Datos)
+                Estructura de la Hoja
             </h3>
             
             <div className="bg-green-900/20 border border-green-500/30 rounded-lg p-4 mb-4">
                 <p className="text-sm text-gray-200 font-bold mb-3">
-                    El sistema requiere exactamente 2 hojas con estos nombres (sin comillas):
+                    Solo necesitas 1 hoja llamada "Ofertas" (Case Sensitive):
                 </p>
                 <div className="flex gap-2 items-end">
                     <div className="bg-white text-green-900 px-4 py-1.5 rounded-t-lg font-bold text-xs border-t-4 border-green-600 shadow-lg translate-y-[1px] relative z-10">
                         Ofertas
                     </div>
-                    <div className="bg-slate-700 text-gray-400 px-4 py-1.5 rounded-t-lg font-medium text-xs hover:bg-slate-600 border-t-4 border-slate-600">
-                        Config
-                    </div>
                     <div className="bg-slate-600/30 flex-1 h-[1px] mb-[1px]"></div>
-                </div>
-                <div className="bg-white p-3 rounded-b-lg rounded-tr-lg border-t border-green-600 shadow-sm relative z-0">
-                   <div className="flex gap-1 overflow-x-auto text-[10px] font-mono text-gray-500 whitespace-nowrap pb-1">
-                      <span className="bg-gray-100 border px-1">A:ID</span>
-                      <span className="bg-gray-100 border px-1">B:FECHA</span>
-                      <span className="bg-gray-100 border px-1">C:TIPO</span>
-                      <span className="bg-gray-100 border px-1">D:CATEGORIA</span>
-                      <span className="bg-gray-100 border px-1">...</span>
-                   </div>
                 </div>
             </div>
 
             <p className="text-xs text-gray-400 mb-2">
-                Columnas requeridas en la hoja <strong>"Ofertas"</strong>:
+                Columnas requeridas:
             </p>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 {headers.map((h) => (
@@ -444,16 +403,28 @@ export const ConfigGuide: React.FC = () => {
 
           {/* Script Code */}
           <div className="bg-slate-800/50 p-6 rounded-xl border border-white/5">
-            <h3 className="text-lg font-semibold text-primary-400 mb-4">Código Backend (v4 - JSON)</h3>
+            <h3 className="text-lg font-semibold text-primary-400 mb-4 flex items-center">
+                <ServerIcon className="h-5 w-5 mr-2" />
+                Código Backend (v8 - Sin Config)
+            </h3>
+            
+            <div className="bg-yellow-500/10 border border-yellow-500/20 p-3 rounded-lg mb-4 flex items-start">
+               <RocketLaunchIcon className="h-5 w-5 text-yellow-500 mr-2 flex-shrink-0 mt-0.5" />
+               <div className="text-xs text-yellow-200">
+                  <span className="font-bold">PASOS OBLIGATORIOS:</span><br/>
+                  1. Copia este código y actualiza Google Apps Script.<br/>
+                  2. <strong>¡GUARDA EL ARCHIVO (Ctrl + S)!</strong><br/>
+                  3. Implementar -> Nueva Implementación.<br/>
+                  4. Ya puedes borrar la hoja "Config" si existía.
+               </div>
+            </div>
+
             <div className="relative bg-black/50 rounded-lg p-4 font-mono text-xs text-green-400 overflow-x-auto border border-gray-700">
                <button onClick={copyCode} className="absolute top-2 right-2 text-gray-400 hover:text-white bg-slate-700 p-1.5 rounded-md">
                  <ClipboardDocumentIcon className="h-4 w-4" />
                </button>
                <pre>{appScriptCode}</pre>
             </div>
-            <p className="mt-2 text-xs text-red-400 font-bold">
-               IMPORTANTE: Después de copiar esto en Google Scripts, debes hacer "Nueva Implementación" y seleccionar "Cualquier persona" en acceso.
-            </p>
           </div>
 
         </div>
