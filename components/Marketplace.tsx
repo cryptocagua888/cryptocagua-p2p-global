@@ -2,14 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { getOffers, getAdminEmail, getAdminPhone, isAdmin, deleteOffer, approveOffer, fetchOffers } from '../services/dataService';
 import { Offer, AssetCategory, OfferType } from '../types';
 import { analyzeOffer } from '../services/geminiService';
-import { MagnifyingGlassIcon, MapPinIcon, CurrencyDollarIcon, ChatBubbleLeftRightIcon, SparklesIcon, XMarkIcon, TrashIcon, CheckBadgeIcon, ExclamationTriangleIcon, StarIcon, ShieldExclamationIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import { MagnifyingGlassIcon, ChatBubbleLeftRightIcon, SparklesIcon, XMarkIcon, TrashIcon, CheckBadgeIcon, ExclamationTriangleIcon, StarIcon, ShieldExclamationIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import { StarIcon as StarIconSolid, CheckCircleIcon } from '@heroicons/react/24/solid';
-import ReactMarkdown from 'react-markdown';
 
 export const Marketplace: React.FC = () => {
   const [offers, setOffers] = useState<Offer[]>([]);
   const [loading, setLoading] = useState(false);
-  const [filterCategory, setFilterCategory] = useState<string>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [aiAnalysis, setAiAnalysis] = useState<string>('');
   const [analyzing, setAnalyzing] = useState(false);
@@ -42,14 +40,13 @@ export const Marketplace: React.FC = () => {
     } else {
         if (offer.status !== 'APPROVED') return false;
     }
-    const matchesCategory = filterCategory === 'ALL' || offer.category === filterCategory;
     const term = searchTerm.toLowerCase();
     const matchesSearch = 
       (offer.title || '').toLowerCase().includes(term) || 
       (offer.asset || '').toLowerCase().includes(term) ||
       (offer.location || '').toLowerCase().includes(term) ||
       (offer.nickname || '').toLowerCase().includes(term);
-    return matchesCategory && matchesSearch;
+    return matchesSearch;
   });
 
   const handleDelete = (e: React.MouseEvent, id: string) => {
@@ -70,7 +67,7 @@ export const Marketplace: React.FC = () => {
     setAnalyzing(true);
     setAiAnalysis('');
     setShowAiModal(true);
-    const context = `Oferta de ${offer.type}: ${offer.title}. Activo: ${offer.asset}. Precio: ${offer.price}. Ubicación: ${offer.location}. Vendedor: @${offer.nickname}. Reputación: ${offer.reputation || 0} estrellas.`;
+    const context = `Oferta: ${offer.title}. Activo: ${offer.asset}. Precio: ${offer.price}. Vendedor: @${offer.nickname}.`;
     const result = await analyzeOffer(context);
     setAiAnalysis(result);
     setAnalyzing(false);
@@ -78,18 +75,15 @@ export const Marketplace: React.FC = () => {
 
   const openTradeRoom = (e: React.MouseEvent, offer: Offer) => {
     e.preventDefault();
-    if (!offer) return;
     setTradeOffer(offer);
     setRating(0);
   };
 
-  // FUNCIÓN CORREGIDA: Separa destinatarios Admin y Vendedor
-  const getWhatsAppLink = (offer: Offer | null, type: 'TRADE' | 'REPORT' | 'COMPLETE' | 'RATING') => {
+  const getWhatsAppLink = (offer: Offer | null, type: 'TRADE' | 'REPORT' | 'COMPLETE_WITH_RATING') => {
     if (!offer) return '#';
     const idSafe = offer.id ? offer.id.slice(0,6) : '---';
     const adminPhone = getAdminPhone();
     
-    // CASO 1: CONTACTAR AL VENDEDOR (PARA NEGOCIAR)
     if (type === 'TRADE') {
         const sellerContact = offer.contactInfo || '';
         let sellerPhone = sellerContact.replace(/[^0-9]/g, '');
@@ -98,50 +92,35 @@ export const Marketplace: React.FC = () => {
         return `https://wa.me/${sellerPhone}?text=${encodeURIComponent(text)}`;
     } 
     
-    // CASOS RESTANTES: CONTACTAR AL ADMINISTRADOR
-    if (type === 'REPORT') {
-        if (adminPhone) {
-            const text = `🚨 *REPORTE DE ESTAFA*\nID de oferta: ${idSafe}\nUsuario: @${offer.nickname}\nPor favor revisar este caso urgentemente.`;
-            return `https://wa.me/${adminPhone}?text=${encodeURIComponent(text)}`;
-        }
-        return `mailto:${getAdminEmail()}?subject=REPORTE - ID ${idSafe}`;
+    if (type === 'REPORT' && adminPhone) {
+        const text = `🚨 *REPORTE DE ESTAFA*\nID: ${idSafe}\nUsuario: @${offer.nickname}\nRevisar urgente.`;
+        return `https://wa.me/${adminPhone}?text=${encodeURIComponent(text)}`;
     } 
     
-    if (type === 'COMPLETE') {
-         if (adminPhone) {
-             const text = `✅ *COMERCIO CONCRETADO*\nID: ${idSafe}\nTodo salió bien entre las partes. Solicito marcar como finalizado en el sistema.`;
-             return `https://wa.me/${adminPhone}?text=${encodeURIComponent(text)}`;
-         }
-         return null; 
-    } 
-    
-    if (type === 'RATING') {
-        if (adminPhone) {
-            const text = `⭐ *CALIFICACIÓN DE USUARIO*\nOferta ID: ${idSafe}\nVendedor: @${offer.nickname}\nEstrellas: ${rating}/5\n\nPor favor actualice la reputación del vendedor.`;
-            return `https://wa.me/${adminPhone}?text=${encodeURIComponent(text)}`;
-        }
-        return null;
+    if (type === 'COMPLETE_WITH_RATING' && adminPhone) {
+         const stars = rating > 0 ? `${rating}/5 ⭐` : "Sin calificar";
+         const text = `✅ *COMERCIO CONCRETADO*\n🆔 ID: ${idSafe}\n👤 Vendedor: @${offer.nickname}\n🌟 Calificación: ${stars}\n\nTodo salió bien, solicito cerrar el registro.`;
+         return `https://wa.me/${adminPhone}?text=${encodeURIComponent(text)}`;
     }
     
-    return '#';
+    return null;
   };
 
-  const handleRatingSubmit = () => {
-    const waRatingLink = getWhatsAppLink(tradeOffer, 'RATING');
-    const adminMail = getAdminEmail();
-
-    if (waRatingLink) {
-        window.open(waRatingLink, '_blank');
-        alert('Calificación enviada al administrador vía WhatsApp.');
-    } else if (adminMail) {
-        const link = `mailto:${adminMail}?subject=Rating ID ${tradeOffer?.id}&body=Usuario @${tradeOffer?.nickname} - Calificación: ${rating} estrellas.`;
-        window.location.href = link;
-        alert('Calificación preparada para enviar por correo.');
-    } else {
-        alert("El administrador no ha configurado sus datos de contacto.");
+  const handleFinalizeAndRate = () => {
+    if (rating === 0) {
+      if (!window.confirm("No has seleccionado estrellas para calificar al vendedor. ¿Deseas finalizar de todos modos?")) {
         return;
+      }
     }
-    setTradeOffer(null);
+
+    const link = getWhatsAppLink(tradeOffer, 'COMPLETE_WITH_RATING');
+    if (link) {
+        window.open(link, '_blank');
+        alert('¡Excelente! Se ha enviado la confirmación y calificación al administrador.');
+        setTradeOffer(null);
+    } else {
+        alert('El administrador no tiene configurado WhatsApp.');
+    }
   };
 
   return (
@@ -192,7 +171,7 @@ export const Marketplace: React.FC = () => {
                 </div>
               </div>
               <div className="p-4 bg-slate-900/50 flex gap-2">
-                  <button onClick={() => handleAnalyze(offer)} className="flex-1 bg-slate-800 text-secondary-400 font-bold py-3 rounded-xl border border-white/5 flex items-center justify-center gap-2 transition-colors hover:bg-slate-700"><SparklesIcon className="h-4 w-4" /> IA</button>
+                  <button onClick={() => handleAnalyze(offer)} className="flex-1 bg-slate-800 text-secondary-400 font-bold py-3 rounded-xl border border-white/5 flex items-center justify-center gap-2 hover:bg-slate-700 transition-colors"><SparklesIcon className="h-4 w-4" /> IA</button>
                   <button onClick={(e) => openTradeRoom(e, offer)} className="flex-[2] bg-white text-slate-900 font-bold py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-gray-200 transition-colors"><ChatBubbleLeftRightIcon className="h-4 w-4" /> Iniciar</button>
               </div>
             </div>
@@ -210,41 +189,35 @@ export const Marketplace: React.FC = () => {
                 <div className="p-6 space-y-6">
                     <div className="bg-slate-800/50 p-4 rounded-xl border border-white/5 grid grid-cols-2 gap-4">
                         <div><p className="text-[10px] text-gray-500 uppercase font-bold">Vendedor</p><p className="text-white font-bold text-sm">@{tradeOffer.nickname || 'Usuario'}</p></div>
-                        <div><p className="text-[10px] text-gray-500 uppercase font-bold">Reputación</p><div className="flex text-yellow-500">{[...Array(5)].map((_, i) => <StarIconSolid key={i} className={`h-3 w-3 ${i < (tradeOffer.reputation || 0) ? 'text-yellow-500' : 'text-slate-700'}`} />)}</div></div>
+                        <div><p className="text-[10px] text-gray-500 uppercase font-bold">Reputación Actual</p><div className="flex text-yellow-500">{[...Array(5)].map((_, i) => <StarIconSolid key={i} className={`h-3 w-3 ${i < (tradeOffer.reputation || 0) ? 'text-yellow-500' : 'text-slate-700'}`} />)}</div></div>
                     </div>
                     
-                    {/* ESTE BOTÓN AHORA DIRIGE AL VENDEDOR */}
-                    <a href={getWhatsAppLink(tradeOffer, 'TRADE') || '#'} target="_blank" rel="noreferrer" className="flex items-center justify-center w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-xl transition-all shadow-lg shadow-green-600/20 active:scale-95" onClick={(e) => !getWhatsAppLink(tradeOffer, 'TRADE') && (e.preventDefault(), alert('El vendedor no proporcionó un teléfono válido.'))}>
+                    <a href={getWhatsAppLink(tradeOffer, 'TRADE') || '#'} target="_blank" rel="noreferrer" className="flex items-center justify-center w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-xl transition-all shadow-lg shadow-green-600/20 active:scale-95" onClick={(e) => !getWhatsAppLink(tradeOffer, 'TRADE') && (e.preventDefault(), alert('Teléfono del vendedor no válido.'))}>
                         <ChatBubbleLeftRightIcon className="h-6 w-6 mr-3" /> Abrir Chat con el Vendedor
                     </a>
 
-                    <div className="text-center pt-4 border-t border-white/5">
-                        <p className="text-xs text-gray-400 mb-3 italic">Califica al vendedor (ayuda a la comunidad):</p>
-                        <div className="flex justify-center gap-2 mb-4">{[1, 2, 3, 4, 5].map((s) => <button key={s} onClick={() => setRating(s)} className="focus:outline-none transition-transform active:scale-125">{rating >= s ? <StarIconSolid className="h-8 w-8 text-yellow-400" /> : <StarIcon className="h-8 w-8 text-gray-600 hover:text-gray-400" />}</button>)}</div>
-                        <button disabled={rating === 0} onClick={handleRatingSubmit} className={`w-full py-3 rounded-xl text-sm font-bold transition-all ${rating > 0 ? 'bg-primary-600 text-white shadow-lg hover:bg-primary-500' : 'bg-slate-800 text-gray-500'}`}>Confirmar Calificación</button>
+                    <div className="bg-slate-900/40 p-5 rounded-2xl border border-white/5 text-center">
+                        <p className="text-xs font-bold text-primary-400 mb-3 uppercase tracking-widest">¿Cómo fue tu experiencia?</p>
+                        <div className="flex justify-center gap-2 mb-2">
+                          {[1, 2, 3, 4, 5].map((s) => (
+                            <button key={s} onClick={() => setRating(s)} className="focus:outline-none transition-transform active:scale-150">
+                              {rating >= s ? <StarIconSolid className="h-10 w-10 text-yellow-400 drop-shadow-[0_0_8px_rgba(250,204,21,0.5)]" /> : <StarIcon className="h-10 w-10 text-gray-600 hover:text-gray-400" />}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="text-[10px] text-gray-500 italic">Marca las estrellas antes de finalizar el comercio.</p>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3 mt-4">
-                        <button onClick={() => { 
-                            const link = getWhatsAppLink(tradeOffer, 'COMPLETE'); 
-                            if(link) {
-                                window.open(link, '_blank');
-                                alert('Solicitud enviada al administrador. Cerrando sala de negocio.');
-                                setTradeOffer(null);
-                            } else {
-                                alert('El administrador no tiene configurado WhatsApp.');
-                            }
-                        }} className="text-[10px] font-bold text-blue-400 bg-blue-500/5 p-3 rounded-xl border border-blue-500/20 hover:bg-blue-500/10 transition-all flex items-center justify-center gap-1">
-                            <CheckCircleIcon className="h-3 w-3" /> Ya pagué/recibí
+                    <div className="space-y-3">
+                        <button onClick={handleFinalizeAndRate} className="w-full flex items-center justify-center bg-primary-600 hover:bg-primary-500 text-white font-bold py-4 rounded-xl transition-all shadow-xl shadow-primary-500/20 active:scale-95">
+                            <CheckCircleIcon className="h-6 w-6 mr-2" /> Finalizar y Calificar
                         </button>
+                        
                         <button onClick={() => { 
                             const link = getWhatsAppLink(tradeOffer, 'REPORT'); 
-                            if(link) {
-                                if(link.startsWith('mailto')) window.location.href = link;
-                                else window.open(link, '_blank');
-                            }
-                        }} className="text-[10px] font-bold text-red-400 bg-red-500/5 p-3 rounded-xl border border-red-500/20 hover:bg-red-500/10 transition-all flex items-center justify-center gap-1">
-                            <ExclamationTriangleIcon className="h-3 w-3" /> Reportar Estafa
+                            if(link) window.open(link, '_blank');
+                        }} className="w-full text-[10px] font-bold text-red-400 hover:text-red-300 py-2 flex items-center justify-center gap-1 opacity-70 hover:opacity-100 transition-all">
+                            <ExclamationTriangleIcon className="h-3 w-3" /> Reportar Problema o Estafa
                         </button>
                     </div>
                 </div>
