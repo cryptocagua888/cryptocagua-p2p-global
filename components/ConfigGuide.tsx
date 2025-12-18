@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { saveSheetUrl, getSheetUrl, saveAdminEmail, getAdminEmail, setAdminSession, isAdmin, verifyServerPin, isPinConfigured, testConnection, validateSheetUrl, getBrowserTestLink } from '../services/dataService';
-import { isAiConfigured } from '../services/geminiService';
-import { ClipboardDocumentIcon, CheckIcon, LockClosedIcon, EnvelopeIcon, ArrowRightOnRectangleIcon, ServerIcon, TableCellsIcon, KeyIcon, ExclamationTriangleIcon, ShareIcon, SparklesIcon, SignalIcon, SignalSlashIcon, BoltIcon, RocketLaunchIcon, GlobeAltIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import { ClipboardDocumentIcon, CheckIcon, LockClosedIcon, EnvelopeIcon, ArrowRightOnRectangleIcon, ServerIcon, TableCellsIcon, KeyIcon, ShareIcon, SparklesIcon, BoltIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 
 export const ConfigGuide: React.FC = () => {
   const [url, setUrl] = useState('');
@@ -37,6 +36,22 @@ export const ConfigGuide: React.FC = () => {
       setPin('');
     }
     setLoading(false);
+  };
+
+  const getMagicLink = () => {
+    if (!url) return '';
+    const encoded = btoa(url);
+    return `${window.location.origin}/?setup=${encoded}`;
+  };
+
+  const copyMagicLink = () => {
+    const link = getMagicLink();
+    if (!link) {
+        alert("Primero configura y guarda la URL del Script.");
+        return;
+    }
+    navigator.clipboard.writeText(link);
+    alert("¡Link Mágico copiado! Envíalo a tus usuarios.");
   };
 
   const appScriptCode = `// --- CÓDIGO v13 (REPUTACIÓN ACTIVA) ---
@@ -131,28 +146,78 @@ function doPost(e) {
         <h2 className="text-3xl font-bold text-white mb-8">Configuración v13</h2>
         
         <div className="space-y-8">
+          {/* Email Config */}
           <div className="bg-slate-800/50 p-6 rounded-xl border border-white/5">
-            <h3 className="text-lg font-semibold text-primary-400 mb-4">URL del Script</h3>
+            <h3 className="text-lg font-semibold text-primary-400 mb-4 flex items-center">
+              <EnvelopeIcon className="h-5 w-5 mr-2" />
+              Email de Soporte
+            </h3>
             <div className="flex gap-3">
-              <input type="text" value={url} onChange={(e) => setUrl(e.target.value)} className="flex-1 bg-slate-950 p-3 rounded-lg text-white border border-slate-700" />
-              <button onClick={() => { saveSheetUrl(url); setSaved(true); setTimeout(() => setSaved(false), 2000); }} className="bg-primary-600 px-6 rounded-lg font-bold">{saved ? 'OK' : 'Guardar'}</button>
+              <input 
+                type="email" 
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="admin@tuapp.com"
+                className="flex-1 rounded-lg bg-slate-950 border border-slate-700 p-3 text-white"
+              />
+              <button onClick={() => { saveAdminEmail(email); setEmailSaved(true); setTimeout(() => setEmailSaved(false), 2000); }} className="bg-primary-600 hover:bg-primary-500 text-white font-bold px-6 rounded-lg transition-colors">
+                {emailSaved ? <CheckIcon className="h-5 w-5" /> : 'Guardar'}
+              </button>
             </div>
-            <button onClick={async () => { setTesting(true); const r = await testConnection(); setTestResult(r); setTesting(false); }} className="mt-4 text-xs font-bold text-yellow-500 bg-yellow-500/10 px-4 py-2 rounded-lg border border-yellow-500/20">{testing ? 'Probando...' : 'Probar Conexión v13'}</button>
-            {testResult && <p className={`mt-2 text-xs ${testResult.success ? 'text-green-400' : 'text-red-400'}`}>{testResult.message}</p>}
+          </div>
+
+          {/* URL Config */}
+          <div className="bg-slate-800/50 p-6 rounded-xl border border-white/5">
+            <h3 className="text-lg font-semibold text-primary-400 mb-4">Paso 1: Conexión (URL del Script)</h3>
+            <div className="flex gap-3">
+              <input type="text" value={url} onChange={(e) => setUrl(e.target.value)} className={`flex-1 bg-slate-950 p-3 rounded-lg text-white border ${urlError ? 'border-red-500' : 'border-slate-700'}`} />
+              <button onClick={() => { saveSheetUrl(url); setSaved(true); setTimeout(() => setSaved(false), 2000); }} className="bg-primary-600 px-6 rounded-lg font-bold">{saved ? <CheckIcon className="h-5 w-5" /> : 'Guardar'}</button>
+            </div>
+            <button onClick={async () => { setTesting(true); const r = await testConnection(); setTestResult(r); setTesting(false); }} className="mt-4 text-xs font-bold text-yellow-500 bg-yellow-500/10 px-4 py-2 rounded-lg border border-yellow-500/20">{testing ? <ArrowPathIcon className="h-4 w-4 animate-spin mr-2 inline" /> : <BoltIcon className="h-4 w-4 mr-2 inline" />}{testing ? 'Probando...' : 'Probar Conexión v13'}</button>
+            {testResult && <p className={`mt-2 text-xs p-2 rounded bg-slate-900 border border-white/5 ${testResult.success ? 'text-green-400' : 'text-red-400'}`}>{testResult.message}</p>}
+          </div>
+
+          {/* Magic Link Section */}
+          <div className="bg-gradient-to-r from-purple-900/20 to-primary-900/20 p-6 rounded-xl border border-primary-500/20">
+            <h3 className="text-lg font-semibold text-white mb-2 flex items-center">
+              <SparklesIcon className="h-5 w-5 mr-2 text-yellow-400" />
+              Link Mágico de Configuración
+            </h3>
+            <p className="text-sm text-gray-400 mb-4">
+              Comparte este link con tus usuarios para conectar su App automáticamente.
+            </p>
+            <div className="flex gap-3">
+               <input 
+                  type="text" 
+                  readOnly 
+                  value={getMagicLink()} 
+                  className="flex-1 bg-black/30 border border-white/10 rounded-lg px-3 text-gray-500 text-xs font-mono truncate"
+               />
+               <button 
+                 onClick={copyMagicLink}
+                 disabled={!url}
+                 className="bg-white text-slate-900 hover:bg-gray-200 font-bold px-4 py-2 rounded-lg text-sm transition-colors flex items-center disabled:opacity-50"
+               >
+                 <ShareIcon className="h-4 w-4 mr-2" />
+                 Copiar
+               </button>
+            </div>
           </div>
 
           <div className="bg-slate-800/50 p-6 rounded-xl border border-white/5">
-             <h3 className="text-lg font-semibold text-primary-400 mb-4">Estructura de la Hoja (Actualizada)</h3>
+             <h3 className="text-lg font-semibold text-primary-400 mb-4 flex items-center"><TableCellsIcon className="h-5 w-5 mr-2" /> Estructura de la Hoja</h3>
              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 {headers.map(h => <div key={h} className="bg-slate-900 p-2 rounded text-[10px] text-gray-400 font-mono">{h}</div>)}
              </div>
-             <p className="text-[10px] text-yellow-500 mt-4">⚠️ IMPORTANTE: La nueva columna "M" es para que tú pongas manualmente la reputación de los usuarios.</p>
+             <p className="text-[10px] text-yellow-500 mt-4 font-bold">⚠️ IMPORTANTE: La columna "M" es para que tú pongas manualmente la reputación (1-5) en tu Google Sheet.</p>
           </div>
 
           <div className="bg-slate-800/50 p-6 rounded-xl border border-white/5">
-            <h3 className="text-lg font-semibold text-primary-400 mb-4">Nuevo Código Script (v13)</h3>
-            <div className="relative bg-black p-4 rounded-lg text-[10px] font-mono text-green-400 overflow-x-auto">
-               <button onClick={() => { navigator.clipboard.writeText(appScriptCode); alert('Copiado'); }} className="absolute top-2 right-2 bg-slate-700 p-1 rounded"><ClipboardDocumentIcon className="h-4 w-4"/></button>
+            <h3 className="text-lg font-semibold text-primary-400 mb-4 flex items-center"><ServerIcon className="h-5 w-5 mr-2" /> Nuevo Código Script (v13)</h3>
+            <div className="relative bg-black p-4 rounded-lg text-[10px] font-mono text-green-400 overflow-x-auto border border-white/5">
+               <button onClick={() => { navigator.clipboard.writeText(appScriptCode); alert('Código v13 Copiado'); }} className="absolute top-2 right-2 bg-slate-700 p-1.5 rounded hover:text-white transition-colors">
+                 <ClipboardDocumentIcon className="h-4 w-4"/>
+               </button>
                <pre>{appScriptCode}</pre>
             </div>
           </div>
