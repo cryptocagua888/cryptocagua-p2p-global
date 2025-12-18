@@ -1,11 +1,13 @@
 
 import { Offer, OfferType, AssetCategory, OfferStatus } from '../types';
 
-const STORAGE_KEY = 'cryptocagua_v10_storage';
-const ADMIN_KEY = 'cryptocagua_admin_auth';
+const STORAGE_KEY = 'cryptocagua_v13_storage';
+const ADMIN_SESSION_KEY = 'cryptocagua_admin_active';
 const CONFIG_KEY = 'cryptocagua_sheet_url';
 const PHONE_KEY = 'cryptocagua_admin_phone';
 const EMAIL_KEY = 'cryptocagua_admin_email';
+// Key for storing the user's local profile (nickname and contact info)
+const PROFILE_KEY = 'cryptocagua_user_profile';
 
 export const getSheetUrl = () => localStorage.getItem(CONFIG_KEY) || '';
 export const saveSheetUrl = (url: string) => localStorage.setItem(CONFIG_KEY, url);
@@ -14,10 +16,21 @@ export const saveAdminPhone = (p: string) => localStorage.setItem(PHONE_KEY, p.r
 export const getAdminEmail = () => localStorage.getItem(EMAIL_KEY) || '';
 export const saveAdminEmail = (e: string) => localStorage.setItem(EMAIL_KEY, e);
 
-export const isAdmin = (): boolean => localStorage.getItem(ADMIN_KEY) === 'true';
+// Fix: Added getUserProfile to retrieve saved nickname and contact info from localStorage
+export const getUserProfile = (): { nickname: string; contactInfo: string } | null => {
+  const stored = localStorage.getItem(PROFILE_KEY);
+  return stored ? JSON.parse(stored) : null;
+};
+
+// Fix: Added saveUserProfile to persist user nickname and contact info locally
+export const saveUserProfile = (nickname: string, contactInfo: string) => {
+  localStorage.setItem(PROFILE_KEY, JSON.stringify({ nickname, contactInfo }));
+};
+
+export const isAdmin = (): boolean => localStorage.getItem(ADMIN_SESSION_KEY) === 'true';
 export const setAdminSession = (val: boolean) => {
-  if (val) localStorage.setItem(ADMIN_KEY, 'true');
-  else localStorage.removeItem(ADMIN_KEY);
+  if (val) localStorage.setItem(ADMIN_SESSION_KEY, 'true');
+  else localStorage.removeItem(ADMIN_SESSION_KEY);
 };
 
 export const getOffers = (): Offer[] => {
@@ -29,15 +42,25 @@ export const fetchOffers = async (): Promise<Offer[]> => {
   const url = getSheetUrl();
   if (!url) return getOffers();
   try {
-    const params = new URLSearchParams({ action: 'read' });
-    const res = await fetch(url, { method: 'POST', body: params });
-    const json = await res.json();
+    const params = new URLSearchParams();
+    params.append('action', 'read');
+    
+    await fetch(url, { 
+      method: 'POST', 
+      mode: 'no-cors', // Apps Script requires a simple POST or specific handling for CORS
+    });
+    
+    // As Apps Script with no-cors doesn't return the body, we use a 'read' action via GET
+    const response = await fetch(`${url}?action=read`);
+    const json = await response.json();
+    
     if (json.success) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(json.data));
       return json.data;
     }
     return getOffers();
-  } catch {
+  } catch (e) {
+    console.error("Error al obtener ofertas:", e);
     return getOffers();
   }
 };
@@ -60,9 +83,18 @@ export const syncWithGoogleSheets = async (offer: Offer): Promise<boolean> => {
   const url = getSheetUrl();
   if (!url) return true;
   try {
-    const params = new URLSearchParams({ action: 'save', ...offer as any });
-    const res = await fetch(url, { method: 'POST', body: params });
-    return res.ok;
+    const formData = new URLSearchParams();
+    formData.append('action', 'save');
+    Object.keys(offer).forEach(key => {
+      formData.append(key, (offer as any)[key]);
+    });
+    
+    await fetch(url, { 
+      method: 'POST', 
+      mode: 'no-cors', 
+      body: formData 
+    });
+    return true;
   } catch {
     return false;
   }
@@ -73,8 +105,11 @@ export const approveOffer = async (id: string) => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(offers));
   const url = getSheetUrl();
   if (url) {
-    const params = new URLSearchParams({ action: 'updateStatus', id, status: 'APPROVED' });
-    await fetch(url, { method: 'POST', body: params });
+    const params = new URLSearchParams();
+    params.append('action', 'updateStatus');
+    params.append('id', id);
+    params.append('status', 'APPROVED');
+    await fetch(url, { method: 'POST', mode: 'no-cors', body: params });
   }
 };
 
@@ -83,8 +118,10 @@ export const deleteOffer = (id: string) => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(offers));
   const url = getSheetUrl();
   if (url) {
-    const params = new URLSearchParams({ action: 'delete', id });
-    fetch(url, { method: 'POST', body: params });
+    const params = new URLSearchParams();
+    params.append('action', 'delete');
+    params.append('id', id);
+    fetch(url, { method: 'POST', mode: 'no-cors', body: params });
   }
 };
 
@@ -92,21 +129,14 @@ export const testConnection = async () => {
   const url = getSheetUrl();
   if (!url) return { success: false, message: "URL no configurada" };
   try {
-    const params = new URLSearchParams({ action: 'save', id: 'TEST', title: 'Test' });
-    const res = await fetch(url, { method: 'POST', body: params });
-    return { success: res.ok, message: res.ok ? "Conexión exitosa" : "Error de respuesta" };
-  } catch {
-    return { success: false, message: "Error de red" };
+    const res = await fetch(`${url}?action=read`);
+    const json = await res.json();
+    return { success: json.success, message: json.success ? "Conexión exitosa" : "Error en el script" };
+  } catch (e) {
+    return { success: false, message: "Error de red o CORS" };
   }
 };
 
-export const getUserProfile = () => {
-  const p = localStorage.getItem('cryptocagua_profile');
-  return p ? JSON.parse(p) : null;
-};
-export const saveUserProfile = (nickname: string, contactInfo: string) => {
-  localStorage.setItem('cryptocagua_profile', JSON.stringify({ nickname, contactInfo }));
-};
 export const processMagicLink = (): boolean => {
   const p = new URLSearchParams(window.location.search);
   const setup = p.get('setup');
