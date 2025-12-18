@@ -44,11 +44,23 @@ export const validateSheetUrl = (url: string): { valid: boolean, error?: string 
 export const getOffers = (): Offer[] => {
   const stored = localStorage.getItem(STORAGE_KEY);
   let offers: Offer[] = stored ? JSON.parse(stored) : INITIAL_DATA;
-  return offers;
+  // Sanitize data to prevent undefined string crashes
+  return offers.map(o => ({
+      ...o,
+      id: o.id || '',
+      title: o.title || '',
+      asset: o.asset || '',
+      price: o.price || '',
+      location: o.location || '',
+      description: o.description || '',
+      contactInfo: o.contactInfo || '',
+      nickname: o.nickname || '',
+      reputation: Number(o.reputation) || 0,
+      status: o.status || 'PENDING'
+  }));
 };
 
 // --- CORE SYNC FUNCTION ---
-// Updated to return errorMessage
 const sendToSheet = async (payload: any): Promise<{success: boolean, errorType?: string, errorMessage?: string}> => {
   const scriptUrl = getSheetUrl();
   if (!scriptUrl) return { success: false, errorType: 'NO_URL' };
@@ -74,26 +86,17 @@ const sendToSheet = async (payload: any): Promise<{success: boolean, errorType?:
     }
 
     const text = await response.text();
-    
-    // Check for HTML (Login page / Error page)
     if (text.trim().startsWith("<") || text.includes("<!DOCTYPE html>")) {
-        console.error("HTML Response detected (Permission Error)");
         return { success: false, errorType: 'HTML_RESPONSE' };
     }
 
     try {
         const json = JSON.parse(text);
-        if (json.error) {
-            console.error("Script Error:", json.error);
-            return { success: false, errorType: 'SCRIPT_ERROR', errorMessage: json.error };
-        }
-    } catch(e) {
-        console.warn("Non-JSON response:", text.substring(0, 50));
-    }
+        if (json.error) return { success: false, errorType: 'SCRIPT_ERROR', errorMessage: json.error };
+    } catch(e) {}
     
     return { success: true };
   } catch (e: any) {
-    console.error("Connection Error:", e);
     return { success: false, errorType: 'NETWORK_ERROR', errorMessage: e.message };
   }
 };
@@ -105,7 +108,6 @@ export const fetchOffers = async (): Promise<Offer[]> => {
   if (!scriptUrl) return getOffers(); 
 
   try {
-    console.log("📥 Descargando datos...");
     const formData = new URLSearchParams();
     formData.append('action', 'read');
 
@@ -121,13 +123,24 @@ export const fetchOffers = async (): Promise<Offer[]> => {
     const data = await response.json();
     
     if (data.success && Array.isArray(data.data)) {
-      console.log("✅ Datos actualizados:", data.data.length);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data.data));
-      return data.data;
+      const sanitized = data.data.map((o: any) => ({
+          ...o,
+          id: String(o.id || ''),
+          title: String(o.title || ''),
+          asset: String(o.asset || ''),
+          price: String(o.price || ''),
+          location: String(o.location || ''),
+          description: String(o.description || ''),
+          contactInfo: String(o.contactInfo || ''),
+          nickname: String(o.nickname || ''),
+          reputation: Number(o.reputation) || 0,
+          status: String(o.status || 'PENDING')
+      }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
+      return sanitized;
     }
     return getOffers();
   } catch (e) {
-    console.warn("⚠️ Error lectura (Usando caché):", e);
     return getOffers(); 
   }
 };
@@ -153,10 +166,8 @@ export const addOffer = (offer: Omit<Offer, 'id' | 'createdAt' | 'status' | 'rep
     reputation: 0, 
     verified: false
   };
-  
   const offers = [newOffer, ...getOffers()];
   localStorage.setItem(STORAGE_KEY, JSON.stringify(offers));
-  
   return newOffer;
 };
 
@@ -169,14 +180,13 @@ export const syncWithGoogleSheets = async (offer: Offer): Promise<boolean> => {
 export const testConnection = async (): Promise<{success: boolean, message: string}> => {
   const scriptUrl = getSheetUrl();
   if (!scriptUrl) return { success: false, message: "Falta URL" };
-
   const testId = 'TEST-' + Math.floor(Math.random() * 10000);
   const payload = {
     action: 'save', 
     id: testId,
     type: 'TEST',
-    title: 'Verificación de Escritura',
-    description: 'Este dato debe ser leído de vuelta para confirmar.',
+    title: 'Verificación Escritura v13',
+    description: 'Confirmando soporte de reputación.',
     category: 'DIGITAL',
     asset: 'System Check',
     price: '0',
@@ -185,60 +195,19 @@ export const testConnection = async (): Promise<{success: boolean, message: stri
     status: 'PENDING',
     nickname: 'Admin'
   };
-
-  // 1. Intentar Escribir
-  console.log("1. Enviando datos de prueba...");
   const sentResult = await sendToSheet(payload);
-  
-  if (!sentResult.success) {
-      if (sentResult.errorType === 'HTML_RESPONSE') {
-          return { success: false, message: "❌ ERROR PERMISOS: El script devolvió Login. Configura 'Quién tiene acceso' a 'Cualquier persona' (Anyone)." };
-      }
-      if (sentResult.errorType === 'SCRIPT_ERROR') {
-          const err = sentResult.errorMessage || "";
-          if (err.includes("permission") || err.includes("SpreadsheetApp")) {
-              return { success: false, message: "🚨 FALTA AUTORIZACIÓN: No has ejecutado el script manualmente. Ve al editor de Google Script, selecciona la función 'setup' y dale a 'Ejecutar' para aceptar los permisos." };
-          }
-          return { success: false, message: `❌ ERROR SCRIPT: "${err}".` };
-      }
-      if (sentResult.errorType === 'NETWORK_ERROR') {
-          console.warn("Error de red en escritura, intentando leer de todas formas...", sentResult.errorMessage);
-      } else {
-          return { success: false, message: `Falló el envío (${sentResult.errorType}). Revisa la URL.` };
-      }
-  }
-
-  // 2. Intentar Leer de vuelta (Verificación real)
-  console.log("2. Esperando propagación (2.5s)...");
+  if (!sentResult.success) return { success: false, message: "Error en el envío. Revisa permisos." };
   await new Promise(r => setTimeout(r, 2500));
-  
-  console.log("3. Intentando leer los datos...");
   try {
       const remoteData = await fetchOffers();
       const found = remoteData.find(o => o.id === testId);
-      
-      if (found) {
-          // NO BORRAMOS EL DATO para que el usuario pueda verificarlo en la hoja.
-          // deleteOffer(testId); 
-          return { 
-              success: true, 
-              message: `¡CONEXIÓN EXITOSA! ✅ El ID ${testId} se guardó y se leyó correctamente. Revisa tu Google Sheet, debería aparecer al final.` 
-          };
-      } else {
-          if (!sentResult.success) {
-             return { success: false, message: "No se pudo conectar. Posible error de CORS o URL incorrecta." };
-          }
-          return { 
-              success: false, 
-              message: "El servidor respondió OK, pero el dato no apareció. Asegúrate de haber hecho 'Nueva Implementación' en el Script." 
-          };
-      }
+      if (found) return { success: true, message: `¡CONEXIÓN EXITOSA! ✅ El ID ${testId} se guardó correctamente. La columna de Reputación está activa.` };
+      return { success: false, message: "El servidor respondió OK, pero el dato no apareció. Re-implementa el script." };
   } catch (e) {
-      return { success: false, message: "Error leyendo de vuelta los datos." };
+      return { success: false, message: "Error leyendo los datos." };
   }
 };
 
-// --- AUTH ---
 export const setAdminSession = (isValid: boolean) => {
   if (isValid) sessionStorage.setItem(ADMIN_SESSION_KEY, 'true');
   else sessionStorage.removeItem(ADMIN_SESSION_KEY);
@@ -251,7 +220,6 @@ export const verifyServerPin = async (pin: string): Promise<boolean> => {
   return false;
 };
 
-// --- USER PROFILE ---
 export const saveUserProfile = (nickname: string, contactInfo: string) => {
   localStorage.setItem(PROFILE_KEY, JSON.stringify({ nickname, contactInfo }));
 };
