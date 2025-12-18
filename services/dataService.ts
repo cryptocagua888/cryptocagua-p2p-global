@@ -5,7 +5,7 @@ const STORAGE_KEY = 'cryptocagua_offers_v6';
 const CONFIG_KEY = 'cryptocagua_sheet_url';
 const EMAIL_KEY = 'cryptocagua_admin_email';
 const PHONE_KEY = 'cryptocagua_admin_phone';
-const ADMIN_SESSION_KEY = 'cryptocagua_admin_session_persistent'; // Nombre cambiado para evitar conflictos
+const ADMIN_SESSION_KEY = 'cryptocagua_admin_session_v2'; 
 const PROFILE_KEY = 'cryptocagua_user_profile'; 
 
 const GLOBAL_SCRIPT_URL = ''; 
@@ -109,11 +109,15 @@ export const setAdminSession = (isValid: boolean) => {
   else localStorage.removeItem(ADMIN_SESSION_KEY);
 };
 
-export const isAdmin = () => localStorage.getItem(ADMIN_SESSION_KEY) === 'true';
+export const isAdmin = () => {
+  return localStorage.getItem(ADMIN_SESSION_KEY) === 'true';
+};
 
 export const verifyServerPin = async (pin: string): Promise<boolean> => {
-  const RESCUE_PIN = "1234"; // Pin por defecto si no hay env
-  return pin === RESCUE_PIN;
+  const MASTER_PIN = "1234"; // Pin por defecto
+  if (!pin) return false;
+  // Comprobación robusta que ignora espacios
+  return pin.trim() === MASTER_PIN;
 };
 
 export const saveUserProfile = (nickname: string, contactInfo: string) => {

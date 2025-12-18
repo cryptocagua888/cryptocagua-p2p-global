@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { saveSheetUrl, getSheetUrl, saveAdminEmail, getAdminEmail, saveAdminPhone, getAdminPhone, setAdminSession, verifyServerPin, testConnection, validateSheetUrl, isAdmin } from '../services/dataService';
 import { ClipboardDocumentIcon, CheckIcon, LockClosedIcon, EnvelopeIcon, ServerIcon, ShareIcon, SparklesIcon, BoltIcon, ArrowPathIcon, PhoneIcon, XCircleIcon } from '@heroicons/react/24/outline';
@@ -11,8 +12,7 @@ export const ConfigGuide: React.FC = () => {
   const [emailSaved, setEmailSaved] = useState(false);
   const [phoneSaved, setPhoneSaved] = useState(false);
   
-  // Verificamos si ya hay una sesión activa al montar el componente
-  const [isAuthenticated, setIsAuthenticated] = useState(isAdmin());
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [pin, setPin] = useState('');
   const [loading, setLoading] = useState(false);
   const [testResult, setTestResult] = useState<{success?: boolean, message?: string} | null>(null);
@@ -22,22 +22,19 @@ export const ConfigGuide: React.FC = () => {
     setUrl(getSheetUrl());
     setEmail(getAdminEmail());
     setPhone(getAdminPhone());
-    // Se eliminó el auto-cierre al desmontar para permitir navegar al mercado sin perder el acceso
+    setIsAuthenticated(isAdmin());
   }, []);
-
-  useEffect(() => {
-    if(url.length > 10) setUrlError(validateSheetUrl(url).error || '');
-    else setUrlError('');
-  }, [url]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    if (await verifyServerPin(pin)) {
-      setIsAuthenticated(true);
+    const isValid = await verifyServerPin(pin);
+    if (isValid) {
       setAdminSession(true);
+      setIsAuthenticated(true);
+      setPin('');
     } else {
-      alert('PIN Incorrecto. Acceso denegado.');
+      alert('PIN Incorrecto. Intenta con 1234');
       setPin('');
     }
     setLoading(false);
@@ -46,7 +43,6 @@ export const ConfigGuide: React.FC = () => {
   const handleLogout = () => {
     setAdminSession(false);
     setIsAuthenticated(false);
-    alert('Sesión administrativa cerrada.');
   };
 
   const copyMagicLink = () => {
@@ -59,43 +55,40 @@ export const ConfigGuide: React.FC = () => {
   if (!isAuthenticated) {
     return (
       <div className="min-h-[70vh] flex items-center justify-center px-4">
-        <div className="glass-panel max-w-sm w-full p-8 rounded-3xl border border-primary-500/30 shadow-2xl animate-in fade-in zoom-in duration-300">
+        <div className="bg-slate-800 max-w-sm w-full p-8 rounded-3xl border border-primary-500/30 shadow-2xl">
           <div className="text-center mb-8">
             <div className="mx-auto w-16 h-16 bg-primary-500/10 rounded-2xl flex items-center justify-center mb-4 border border-primary-500/20">
               <LockClosedIcon className="h-8 w-8 text-primary-400" />
             </div>
             <h2 className="text-2xl font-bold text-white">Panel Maestro</h2>
-            <p className="text-gray-500 text-sm mt-1 font-medium">Acceso restringido para administradores</p>
+            <p className="text-gray-500 text-sm mt-1">Ingresa el PIN de seguridad</p>
           </div>
           
           <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label className="block text-[10px] font-bold text-gray-500 mb-2 uppercase tracking-widest text-center">Introduce tu PIN de seguridad</label>
-              <input 
-                type="password" 
-                value={pin} 
-                onChange={(e) => setPin(e.target.value)} 
-                className="w-full bg-slate-900 border border-slate-700 text-white text-center text-2xl tracking-[1em] rounded-xl p-4 focus:ring-2 focus:ring-primary-500 outline-none transition-all"
-                placeholder="****"
-                autoFocus
-                required
-              />
-            </div>
+            <input 
+              type="password" 
+              value={pin} 
+              onChange={(e) => setPin(e.target.value)} 
+              className="w-full bg-slate-900 border border-slate-700 text-white text-center text-2xl tracking-[0.5em] rounded-xl p-4 focus:ring-2 focus:ring-primary-500 outline-none"
+              placeholder="****"
+              autoFocus
+              required
+            />
             <button 
               type="submit" 
               disabled={loading}
-              className="w-full bg-primary-600 hover:bg-primary-500 text-white font-bold py-4 rounded-xl transition-all shadow-lg shadow-primary-500/20 active:scale-95"
+              className="w-full bg-primary-600 hover:bg-primary-500 text-white font-bold py-4 rounded-xl transition-all shadow-lg active:scale-95"
             >
-              {loading ? 'Verificando...' : 'Desbloquear Panel'}
+              {loading ? 'Verificando...' : 'Desbloquear'}
             </button>
           </form>
-          <p className="text-[10px] text-gray-600 text-center mt-6">Tu sesión permanecerá abierta mientras navegues por la App.</p>
+          <p className="text-[10px] text-gray-500 text-center mt-6">PIN predeterminado: 1234</p>
         </div>
       </div>
     );
   }
 
-  const appScriptCode = `// --- CÓDIGO v13 (REPUTACIÓN ACTIVA) ---
+  const appScriptCode = `// --- CÓDIGO v13 ---
 function setup() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName("Ofertas") || ss.insertSheet("Ofertas");
@@ -134,63 +127,50 @@ function doPost(e) {
 }`;
 
   return (
-    <div className="max-w-4xl mx-auto py-10 px-4 pb-32 animate-in fade-in duration-500">
+    <div className="max-w-4xl mx-auto py-10 px-4 pb-32">
       <div className="flex justify-between items-center mb-8">
-        <h2 className="text-3xl font-bold text-white">Panel Maestro</h2>
+        <h2 className="text-3xl font-bold text-white">Configuración Maestro</h2>
         <button 
           onClick={handleLogout}
-          className="flex items-center gap-2 px-4 py-2 bg-red-500/10 text-red-400 border border-red-500/20 rounded-xl font-bold text-xs hover:bg-red-500/20 transition-all shadow-lg"
+          className="px-4 py-2 bg-red-500/10 text-red-400 border border-red-500/20 rounded-xl font-bold text-xs"
         >
-          <XCircleIcon className="h-5 w-5" /> Cerrar Panel (Bloquear)
+          Bloquear Acceso
         </button>
       </div>
         
-      <div className="space-y-8">
-          <div className="bg-slate-800/50 p-6 rounded-xl border border-white/5 space-y-6">
-            <p className="text-xs text-green-400 font-bold flex items-center"><CheckIcon className="h-4 w-4 mr-1" /> Sesión activa: Ahora puedes ir al Mercado y verás las opciones de administrador.</p>
-            <div>
-              <h3 className="text-sm font-bold text-primary-400 mb-3 flex items-center uppercase tracking-widest">
-                <EnvelopeIcon className="h-4 w-4 mr-2" /> Email de Soporte
-              </h3>
-              <div className="flex gap-3">
-                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@ejemplo.com" className="flex-1 rounded-lg bg-slate-950 border border-slate-700 p-3 text-white" />
-                <button onClick={() => { saveAdminEmail(email); setEmailSaved(true); setTimeout(() => setEmailSaved(false), 2000); }} className="bg-primary-600 px-6 rounded-lg font-bold">{emailSaved ? <CheckIcon className="h-5 w-5" /> : 'Guardar'}</button>
+      <div className="space-y-6">
+          <div className="bg-slate-800/80 p-6 rounded-2xl border border-white/5 space-y-4">
+            <h3 className="text-sm font-bold text-primary-400 uppercase tracking-widest">Soporte y Contacto</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-[10px] text-gray-500 font-bold uppercase block mb-1">Email Soporte</label>
+                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full rounded-lg bg-slate-900 border border-slate-700 p-3 text-white" />
+                <button onClick={() => { saveAdminEmail(email); setEmailSaved(true); setTimeout(() => setEmailSaved(false), 2000); }} className="mt-2 text-xs font-bold text-primary-400">{emailSaved ? '✓ Guardado' : 'Guardar Email'}</button>
               </div>
-            </div>
-
-            <div>
-              <h3 className="text-sm font-bold text-primary-400 mb-3 flex items-center uppercase tracking-widest">
-                <PhoneIcon className="h-4 w-4 mr-2" /> WhatsApp del Admin
-              </h3>
-              <div className="flex gap-3">
-                <input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Ej: 584120000000" className="flex-1 rounded-lg bg-slate-950 border border-slate-700 p-3 text-white" />
-                <button onClick={() => { saveAdminPhone(phone); setPhoneSaved(true); setTimeout(() => setPhoneSaved(false), 2000); }} className="bg-primary-600 px-6 rounded-lg font-bold">{phoneSaved ? <CheckIcon className="h-5 w-5" /> : 'Guardar'}</button>
+              <div>
+                <label className="text-[10px] text-gray-500 font-bold uppercase block mb-1">WhatsApp Admin</label>
+                <input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full rounded-lg bg-slate-900 border border-slate-700 p-3 text-white" />
+                <button onClick={() => { saveAdminPhone(phone); setPhoneSaved(true); setTimeout(() => setPhoneSaved(false), 2000); }} className="mt-2 text-xs font-bold text-primary-400">{phoneSaved ? '✓ Guardado' : 'Guardar Teléfono'}</button>
               </div>
             </div>
           </div>
 
-          <div className="bg-slate-800/50 p-6 rounded-xl border border-white/5">
-            <h3 className="text-sm font-bold text-primary-400 mb-3 uppercase tracking-widest">Paso 1: Conexión (Google Script URL)</h3>
-            <div className="flex gap-3">
-              <input type="text" value={url} onChange={(e) => setUrl(e.target.value)} className={`flex-1 bg-slate-950 p-3 rounded-lg text-white border ${urlError ? 'border-red-500' : 'border-slate-700'}`} />
-              <button onClick={() => { saveSheetUrl(url); setSaved(true); setTimeout(() => setSaved(false), 2000); }} className="bg-primary-600 px-6 rounded-lg font-bold">{saved ? <CheckIcon className="h-5 w-5" /> : 'Guardar'}</button>
+          <div className="bg-slate-800/80 p-6 rounded-2xl border border-white/5">
+            <h3 className="text-sm font-bold text-primary-400 uppercase tracking-widest mb-4">Base de Datos (Google Sheet)</h3>
+            <div className="flex gap-2">
+              <input type="text" value={url} onChange={(e) => setUrl(e.target.value)} className="flex-1 bg-slate-900 p-3 rounded-lg text-white border border-slate-700" />
+              <button onClick={() => { saveSheetUrl(url); setSaved(true); setTimeout(() => setSaved(false), 2000); }} className="bg-primary-600 px-6 rounded-lg font-bold">{saved ? '✓' : 'OK'}</button>
             </div>
-            <button onClick={async () => { setTesting(true); const r = await testConnection(); setTestResult(r); setTesting(false); }} className="mt-4 text-xs font-bold text-yellow-500 bg-yellow-500/10 px-4 py-2 rounded-lg border border-yellow-500/20">{testing ? <ArrowPathIcon className="h-4 w-4 animate-spin mr-2 inline" /> : <BoltIcon className="h-4 w-4 mr-2 inline" />}Probar Conexión</button>
-            {testResult && <p className={`mt-2 text-xs p-2 rounded bg-slate-900 border border-white/5 ${testResult.success ? 'text-green-400' : 'text-red-400'}`}>{testResult.message}</p>}
+            <button onClick={async () => { setTesting(true); const r = await testConnection(); setTestResult(r); setTesting(false); }} className="mt-4 text-[10px] font-bold text-yellow-500 uppercase flex items-center gap-2">
+              {testing ? <ArrowPathIcon className="h-3 w-3 animate-spin" /> : <BoltIcon className="h-3 w-3" />} Probar Conexión
+            </button>
+            {testResult && <p className={`mt-2 text-[10px] ${testResult.success ? 'text-green-400' : 'text-red-400'}`}>{testResult.message}</p>}
           </div>
 
-          <div className="bg-gradient-to-r from-purple-900/20 to-primary-900/20 p-6 rounded-xl border border-primary-500/20">
-            <h3 className="text-lg font-semibold text-white mb-2 flex items-center"><SparklesIcon className="h-5 w-5 mr-2 text-yellow-400" /> Link Mágico</h3>
-            <div className="flex gap-3">
-               <input type="text" readOnly value={`${window.location.origin}/?setup=${btoa(url)}`} className="flex-1 bg-black/30 border border-white/10 rounded-lg px-3 text-gray-500 text-xs font-mono truncate" />
-               <button onClick={copyMagicLink} disabled={!url} className="bg-white text-slate-900 font-bold px-4 py-2 rounded-lg text-sm transition-colors flex items-center disabled:opacity-50"><ShareIcon className="h-4 w-4 mr-2" /> Copiar</button>
-            </div>
-          </div>
-
-          <div className="bg-slate-800/50 p-6 rounded-xl border border-white/5">
-            <h3 className="text-sm font-bold text-primary-400 mb-3 uppercase tracking-widest flex items-center"><ServerIcon className="h-5 w-5 mr-2" /> Código Google Script (v13)</h3>
-            <div className="relative bg-black p-4 rounded-lg text-[10px] font-mono text-green-400 overflow-x-auto border border-white/5">
-               <button onClick={() => { navigator.clipboard.writeText(appScriptCode); alert('Copiado'); }} className="absolute top-2 right-2 bg-slate-700 p-1.5 rounded-lg"><ClipboardDocumentIcon className="h-4 w-4"/></button>
+          <div className="bg-slate-800/80 p-6 rounded-2xl border border-white/5">
+            <h3 className="text-sm font-bold text-primary-400 uppercase tracking-widest mb-2 flex items-center gap-2"><ServerIcon className="h-4 w-4" /> Código de Servidor</h3>
+            <div className="relative bg-black p-4 rounded-xl text-[10px] font-mono text-green-500 overflow-x-auto border border-white/5">
+               <button onClick={() => { navigator.clipboard.writeText(appScriptCode); alert('Copiado'); }} className="absolute top-2 right-2 bg-slate-700 p-1 rounded">Copiar</button>
                <pre>{appScriptCode}</pre>
             </div>
           </div>
