@@ -3,6 +3,7 @@ import { Offer, OfferType, AssetCategory, OfferStatus } from '../types';
 const STORAGE_KEY = 'cryptocagua_offers_v6';
 const CONFIG_KEY = 'cryptocagua_sheet_url';
 const EMAIL_KEY = 'cryptocagua_admin_email';
+const PHONE_KEY = 'cryptocagua_admin_phone';
 const ADMIN_SESSION_KEY = 'cryptocagua_admin_session';
 const PROFILE_KEY = 'cryptocagua_user_profile'; 
 const EXPIRATION_HOURS = 72; 
@@ -31,6 +32,8 @@ export const getSheetUrl = () => localStorage.getItem(CONFIG_KEY) || GLOBAL_SCRI
 export const saveSheetUrl = (url: string) => localStorage.setItem(CONFIG_KEY, url);
 export const getAdminEmail = () => localStorage.getItem(EMAIL_KEY) || '';
 export const saveAdminEmail = (email: string) => localStorage.setItem(EMAIL_KEY, email);
+export const getAdminPhone = () => localStorage.getItem(PHONE_KEY) || '';
+export const saveAdminPhone = (phone: string) => localStorage.setItem(PHONE_KEY, phone.replace(/\+/g, '').replace(/\s/g, ''));
 
 // --- VALIDATOR ---
 export const validateSheetUrl = (url: string): { valid: boolean, error?: string } => {
@@ -44,7 +47,6 @@ export const validateSheetUrl = (url: string): { valid: boolean, error?: string 
 export const getOffers = (): Offer[] => {
   const stored = localStorage.getItem(STORAGE_KEY);
   let offers: Offer[] = stored ? JSON.parse(stored) : INITIAL_DATA;
-  // Sanitize data to prevent undefined string crashes
   return offers.map(o => ({
       ...o,
       id: o.id || '',
@@ -60,7 +62,6 @@ export const getOffers = (): Offer[] => {
   }));
 };
 
-// --- CORE SYNC FUNCTION ---
 const sendToSheet = async (payload: any): Promise<{success: boolean, errorType?: string, errorMessage?: string}> => {
   const scriptUrl = getSheetUrl();
   if (!scriptUrl) return { success: false, errorType: 'NO_URL' };
@@ -75,21 +76,14 @@ const sendToSheet = async (payload: any): Promise<{success: boolean, errorType?:
     const response = await fetch(scriptUrl, {
       method: 'POST',
       redirect: 'follow',
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: formData
     });
 
-    if (!response.ok) {
-        return { success: false, errorType: `HTTP_${response.status}` };
-    }
-
+    if (!response.ok) return { success: false, errorType: `HTTP_${response.status}` };
     const text = await response.text();
-    if (text.trim().startsWith("<") || text.includes("<!DOCTYPE html>")) {
-        return { success: false, errorType: 'HTML_RESPONSE' };
-    }
-
+    if (text.trim().startsWith("<") || text.includes("<!DOCTYPE html>")) return { success: false, errorType: 'HTML_RESPONSE' };
+    
     try {
         const json = JSON.parse(text);
         if (json.error) return { success: false, errorType: 'SCRIPT_ERROR', errorMessage: json.error };
@@ -101,27 +95,20 @@ const sendToSheet = async (payload: any): Promise<{success: boolean, errorType?:
   }
 };
 
-// --- PUBLIC METHODS ---
-
 export const fetchOffers = async (): Promise<Offer[]> => {
   const scriptUrl = getSheetUrl();
   if (!scriptUrl) return getOffers(); 
-
   try {
     const formData = new URLSearchParams();
     formData.append('action', 'read');
-
     const response = await fetch(scriptUrl, {
       method: 'POST',
       redirect: 'follow',
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: formData
     });
-
     if (!response.ok) throw new Error("Error HTTP " + response.status);
-
     const data = await response.json();
-    
     if (data.success && Array.isArray(data.data)) {
       const sanitized = data.data.map((o: any) => ({
           ...o,
@@ -201,8 +188,8 @@ export const testConnection = async (): Promise<{success: boolean, message: stri
   try {
       const remoteData = await fetchOffers();
       const found = remoteData.find(o => o.id === testId);
-      if (found) return { success: true, message: `¡CONEXIÓN EXITOSA! ✅ El ID ${testId} se guardó correctamente. La columna de Reputación está activa.` };
-      return { success: false, message: "El servidor respondió OK, pero el dato no apareció. Re-implementa el script." };
+      if (found) return { success: true, message: `¡CONEXIÓN EXITOSA! ✅ El ID ${testId} se guardó correctamente.` };
+      return { success: false, message: "El servidor respondió OK, pero el dato no apareció." };
   } catch (e) {
       return { success: false, message: "Error leyendo los datos." };
   }
