@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { saveSheetUrl, getSheetUrl, saveAdminEmail, getAdminEmail, saveAdminPhone, getAdminPhone, setAdminSession, isAdmin, verifyServerPin, isPinConfigured, testConnection, validateSheetUrl } from '../services/dataService';
-import { ClipboardDocumentIcon, CheckIcon, LockClosedIcon, EnvelopeIcon, ServerIcon, TableCellsIcon, ShareIcon, SparklesIcon, BoltIcon, ArrowPathIcon, PhoneIcon } from '@heroicons/react/24/outline';
+import { saveSheetUrl, getSheetUrl, saveAdminEmail, getAdminEmail, saveAdminPhone, getAdminPhone, setAdminSession, verifyServerPin, testConnection, validateSheetUrl } from '../services/dataService';
+import { ClipboardDocumentIcon, CheckIcon, LockClosedIcon, EnvelopeIcon, ServerIcon, ShareIcon, SparklesIcon, BoltIcon, ArrowPathIcon, PhoneIcon, XCircleIcon } from '@heroicons/react/24/outline';
 
 export const ConfigGuide: React.FC = () => {
   const [url, setUrl] = useState('');
@@ -10,6 +10,8 @@ export const ConfigGuide: React.FC = () => {
   const [saved, setSaved] = useState(false);
   const [emailSaved, setEmailSaved] = useState(false);
   const [phoneSaved, setPhoneSaved] = useState(false);
+  
+  // Seguridad: Siempre empezamos como NO autenticados
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [pin, setPin] = useState('');
   const [loading, setLoading] = useState(false);
@@ -20,7 +22,11 @@ export const ConfigGuide: React.FC = () => {
     setUrl(getSheetUrl());
     setEmail(getAdminEmail());
     setPhone(getAdminPhone());
-    if (isAdmin()) setIsAuthenticated(true);
+    
+    // Al salir del componente, siempre cerramos la sesión por seguridad
+    return () => {
+      setAdminSession(false);
+    };
   }, []);
 
   useEffect(() => {
@@ -35,24 +41,60 @@ export const ConfigGuide: React.FC = () => {
       setIsAuthenticated(true);
       setAdminSession(true);
     } else {
-      alert('PIN Incorrecto.');
+      alert('PIN Incorrecto. Acceso denegado.');
       setPin('');
     }
     setLoading(false);
   };
 
-  const getMagicLink = () => {
-    if (!url) return '';
-    const encoded = btoa(url);
-    return `${window.location.origin}/?setup=${encoded}`;
-  };
-
   const copyMagicLink = () => {
-    const link = getMagicLink();
-    if (!link) { alert("Primero configura la URL del Script."); return; }
+    const encoded = btoa(url);
+    const link = `${window.location.origin}/?setup=${encoded}`;
     navigator.clipboard.writeText(link);
     alert("¡Link Mágico copiado!");
   };
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-[70vh] flex items-center justify-center px-4">
+        <div className="glass-panel max-w-sm w-full p-8 rounded-3xl border border-primary-500/30 shadow-2xl animate-in fade-in zoom-in duration-300">
+          <div className="text-center mb-8">
+            <div className="mx-auto w-16 h-16 bg-primary-500/10 rounded-2xl flex items-center justify-center mb-4 border border-primary-500/20">
+              <LockClosedIcon className="h-8 w-8 text-primary-400" />
+            </div>
+            <h2 className="text-2xl font-bold text-white">Panel Maestro</h2>
+            <p className="text-gray-500 text-sm mt-1 font-medium">Acceso restringido para administradores</p>
+          </div>
+          
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label className="block text-[10px] font-bold text-gray-500 mb-2 uppercase tracking-widest text-center">Introduce tu PIN de seguridad</label>
+              <input 
+                type="password" 
+                value={pin} 
+                onChange={(e) => setPin(e.target.value)} 
+                className="w-full bg-slate-900 border border-slate-700 text-white text-center text-2xl tracking-[1em] rounded-xl p-4 focus:ring-2 focus:ring-primary-500 outline-none transition-all"
+                placeholder="****"
+                autoFocus
+                required
+              />
+            </div>
+            <button 
+              type="submit" 
+              disabled={loading}
+              className="w-full bg-primary-600 hover:bg-primary-500 text-white font-bold py-4 rounded-xl transition-all shadow-lg shadow-primary-500/20 active:scale-95"
+            >
+              {loading ? 'Verificando...' : 'Desbloquear Panel'}
+            </button>
+          </form>
+          
+          <p className="text-[10px] text-gray-600 text-center mt-6">
+            Si olvidaste tu PIN, contacta al desarrollador del sistema.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const appScriptCode = `// --- CÓDIGO v13 (REPUTACIÓN ACTIVA) ---
 function setup() {
@@ -93,12 +135,18 @@ function doPost(e) {
 }`;
 
   return (
-    <div className="max-w-4xl mx-auto py-10 px-4 pb-32">
-      <div className="glass-panel rounded-2xl p-8">
-        <h2 className="text-3xl font-bold text-white mb-8">Panel Maestro</h2>
+    <div className="max-w-4xl mx-auto py-10 px-4 pb-32 animate-in fade-in duration-500">
+      <div className="flex justify-between items-center mb-8">
+        <h2 className="text-3xl font-bold text-white">Panel Maestro</h2>
+        <button 
+          onClick={() => { setAdminSession(false); setIsAuthenticated(false); }}
+          className="flex items-center gap-2 px-4 py-2 bg-red-500/10 text-red-400 border border-red-500/20 rounded-xl font-bold text-xs hover:bg-red-500/20 transition-all"
+        >
+          <XCircleIcon className="h-5 w-5" /> Cerrar Panel
+        </button>
+      </div>
         
-        <div className="space-y-8">
-          {/* Email & Phone Config */}
+      <div className="space-y-8">
           <div className="bg-slate-800/50 p-6 rounded-xl border border-white/5 space-y-6">
             <div>
               <h3 className="text-sm font-bold text-primary-400 mb-3 flex items-center uppercase tracking-widest">
@@ -118,11 +166,9 @@ function doPost(e) {
                 <input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Ej: 584120000000" className="flex-1 rounded-lg bg-slate-950 border border-slate-700 p-3 text-white" />
                 <button onClick={() => { saveAdminPhone(phone); setPhoneSaved(true); setTimeout(() => setPhoneSaved(false), 2000); }} className="bg-primary-600 px-6 rounded-lg font-bold">{phoneSaved ? <CheckIcon className="h-5 w-5" /> : 'Guardar'}</button>
               </div>
-              <p className="text-[10px] text-gray-500 mt-2">* Ingresa solo números incluyendo código de país (sin el +).</p>
             </div>
           </div>
 
-          {/* URL Config */}
           <div className="bg-slate-800/50 p-6 rounded-xl border border-white/5">
             <h3 className="text-sm font-bold text-primary-400 mb-3 uppercase tracking-widest">Paso 1: Conexión (Google Script URL)</h3>
             <div className="flex gap-3">
@@ -133,11 +179,10 @@ function doPost(e) {
             {testResult && <p className={`mt-2 text-xs p-2 rounded bg-slate-900 border border-white/5 ${testResult.success ? 'text-green-400' : 'text-red-400'}`}>{testResult.message}</p>}
           </div>
 
-          {/* Magic Link */}
           <div className="bg-gradient-to-r from-purple-900/20 to-primary-900/20 p-6 rounded-xl border border-primary-500/20">
             <h3 className="text-lg font-semibold text-white mb-2 flex items-center"><SparklesIcon className="h-5 w-5 mr-2 text-yellow-400" /> Link Mágico</h3>
             <div className="flex gap-3">
-               <input type="text" readOnly value={getMagicLink()} className="flex-1 bg-black/30 border border-white/10 rounded-lg px-3 text-gray-500 text-xs font-mono truncate" />
+               <input type="text" readOnly value={`${window.location.origin}/?setup=${btoa(url)}`} className="flex-1 bg-black/30 border border-white/10 rounded-lg px-3 text-gray-500 text-xs font-mono truncate" />
                <button onClick={copyMagicLink} disabled={!url} className="bg-white text-slate-900 font-bold px-4 py-2 rounded-lg text-sm transition-colors flex items-center disabled:opacity-50"><ShareIcon className="h-4 w-4 mr-2" /> Copiar</button>
             </div>
           </div>
@@ -145,11 +190,10 @@ function doPost(e) {
           <div className="bg-slate-800/50 p-6 rounded-xl border border-white/5">
             <h3 className="text-sm font-bold text-primary-400 mb-3 uppercase tracking-widest flex items-center"><ServerIcon className="h-5 w-5 mr-2" /> Código Google Script (v13)</h3>
             <div className="relative bg-black p-4 rounded-lg text-[10px] font-mono text-green-400 overflow-x-auto border border-white/5">
-               <button onClick={() => { navigator.clipboard.writeText(appScriptCode); alert('Copiado'); }} className="absolute top-2 right-2 bg-slate-700 p-1.5 rounded"><ClipboardDocumentIcon className="h-4 w-4"/></button>
+               <button onClick={() => { navigator.clipboard.writeText(appScriptCode); alert('Copiado'); }} className="absolute top-2 right-2 bg-slate-700 p-1.5 rounded-lg"><ClipboardDocumentIcon className="h-4 w-4"/></button>
                <pre>{appScriptCode}</pre>
             </div>
           </div>
-        </div>
       </div>
     </div>
   );
