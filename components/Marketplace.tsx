@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { getOffers, getAdminEmail, getAdminPhone, isAdmin, deleteOffer, approveOffer, fetchOffers } from '../services/dataService';
 import { Offer, AssetCategory, OfferType } from '../types';
 import { analyzeOffer } from '../services/geminiService';
-import { MagnifyingGlassIcon, FunnelIcon, MapPinIcon, CurrencyDollarIcon, ChatBubbleLeftRightIcon, SparklesIcon, XMarkIcon, FlagIcon, TrashIcon, ClockIcon, CheckBadgeIcon, ExclamationTriangleIcon, StarIcon, ShieldCheckIcon, ShieldExclamationIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import { MagnifyingGlassIcon, MapPinIcon, CurrencyDollarIcon, ChatBubbleLeftRightIcon, SparklesIcon, XMarkIcon, TrashIcon, CheckBadgeIcon, ExclamationTriangleIcon, StarIcon, ShieldExclamationIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import { StarIcon as StarIconSolid, CheckCircleIcon } from '@heroicons/react/24/solid';
 import ReactMarkdown from 'react-markdown';
 
@@ -83,53 +83,62 @@ export const Marketplace: React.FC = () => {
     setRating(0);
   };
 
+  // FUNCIÓN CORREGIDA: Separa destinatarios Admin y Vendedor
   const getWhatsAppLink = (offer: Offer | null, type: 'TRADE' | 'REPORT' | 'COMPLETE' | 'RATING') => {
     if (!offer) return '#';
     const idSafe = offer.id ? offer.id.slice(0,6) : '---';
     const adminPhone = getAdminPhone();
     
+    // CASO 1: CONTACTAR AL VENDEDOR (PARA NEGOCIAR)
     if (type === 'TRADE') {
-        const contact = offer.contactInfo || '';
-        let phone = contact.replace(/[^0-9]/g, '');
-        if (phone.length < 8) return null;
+        const sellerContact = offer.contactInfo || '';
+        let sellerPhone = sellerContact.replace(/[^0-9]/g, '');
+        if (sellerPhone.length < 8) return null;
         const text = `👋 Hola ${offer.nickname || ''}, te contacto desde *Cryptocagua P2P*.\n\nInteresado en:\n🆔 *ID:* ${idSafe}\n📌 *Titulo:* ${offer.title}\n💰 *Precio:* ${offer.price}\n\n✅ *Quiero iniciar el intercambio.*`;
-        return `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
-    } else if (type === 'REPORT') {
+        return `https://wa.me/${sellerPhone}?text=${encodeURIComponent(text)}`;
+    } 
+    
+    // CASOS RESTANTES: CONTACTAR AL ADMINISTRADOR
+    if (type === 'REPORT') {
         if (adminPhone) {
             const text = `🚨 *REPORTE DE ESTAFA*\nID de oferta: ${idSafe}\nUsuario: @${offer.nickname}\nPor favor revisar este caso urgentemente.`;
             return `https://wa.me/${adminPhone}?text=${encodeURIComponent(text)}`;
         }
         return `mailto:${getAdminEmail()}?subject=REPORTE - ID ${idSafe}`;
-    } else if (type === 'COMPLETE') {
+    } 
+    
+    if (type === 'COMPLETE') {
          if (adminPhone) {
              const text = `✅ *COMERCIO CONCRETADO*\nID: ${idSafe}\nTodo salió bien entre las partes. Solicito marcar como finalizado en el sistema.`;
              return `https://wa.me/${adminPhone}?text=${encodeURIComponent(text)}`;
          }
-         return `https://wa.me/?text=${encodeURIComponent(`Comercio exitoso ID ${idSafe}`)}`; 
-    } else if (type === 'RATING') {
+         return null; 
+    } 
+    
+    if (type === 'RATING') {
         if (adminPhone) {
             const text = `⭐ *CALIFICACIÓN DE USUARIO*\nOferta ID: ${idSafe}\nVendedor: @${offer.nickname}\nEstrellas: ${rating}/5\n\nPor favor actualice la reputación del vendedor.`;
             return `https://wa.me/${adminPhone}?text=${encodeURIComponent(text)}`;
         }
         return null;
     }
+    
     return '#';
   };
 
   const handleRatingSubmit = () => {
-    const adminPhone = getAdminPhone();
-    const adminMail = getAdminEmail();
     const waRatingLink = getWhatsAppLink(tradeOffer, 'RATING');
+    const adminMail = getAdminEmail();
 
     if (waRatingLink) {
         window.open(waRatingLink, '_blank');
-        alert('Se ha generado un mensaje de WhatsApp para el administrador con tu calificación.');
+        alert('Calificación enviada al administrador vía WhatsApp.');
     } else if (adminMail) {
         const link = `mailto:${adminMail}?subject=Rating ID ${tradeOffer?.id}&body=Usuario @${tradeOffer?.nickname} - Calificación: ${rating} estrellas.`;
         window.location.href = link;
-        alert('Se ha abierto tu correo para enviar la calificación al administrador.');
+        alert('Calificación preparada para enviar por correo.');
     } else {
-        alert("El administrador no ha configurado ni WhatsApp ni Correo para recibir calificaciones.");
+        alert("El administrador no ha configurado sus datos de contacto.");
         return;
     }
     setTradeOffer(null);
@@ -204,8 +213,9 @@ export const Marketplace: React.FC = () => {
                         <div><p className="text-[10px] text-gray-500 uppercase font-bold">Reputación</p><div className="flex text-yellow-500">{[...Array(5)].map((_, i) => <StarIconSolid key={i} className={`h-3 w-3 ${i < (tradeOffer.reputation || 0) ? 'text-yellow-500' : 'text-slate-700'}`} />)}</div></div>
                     </div>
                     
-                    <a href={getWhatsAppLink(tradeOffer, 'TRADE') || '#'} target="_blank" rel="noreferrer" className="flex items-center justify-center w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-xl transition-all shadow-lg shadow-green-600/20 active:scale-95" onClick={(e) => !getWhatsAppLink(tradeOffer, 'TRADE') && (e.preventDefault(), alert('Teléfono del vendedor no disponible.'))}>
-                        <ChatBubbleLeftRightIcon className="h-6 w-6 mr-3" /> Abrir Chat de WhatsApp
+                    {/* ESTE BOTÓN AHORA DIRIGE AL VENDEDOR */}
+                    <a href={getWhatsAppLink(tradeOffer, 'TRADE') || '#'} target="_blank" rel="noreferrer" className="flex items-center justify-center w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-xl transition-all shadow-lg shadow-green-600/20 active:scale-95" onClick={(e) => !getWhatsAppLink(tradeOffer, 'TRADE') && (e.preventDefault(), alert('El vendedor no proporcionó un teléfono válido.'))}>
+                        <ChatBubbleLeftRightIcon className="h-6 w-6 mr-3" /> Abrir Chat con el Vendedor
                     </a>
 
                     <div className="text-center pt-4 border-t border-white/5">
@@ -219,13 +229,13 @@ export const Marketplace: React.FC = () => {
                             const link = getWhatsAppLink(tradeOffer, 'COMPLETE'); 
                             if(link) {
                                 window.open(link, '_blank');
-                                alert('¡Excelente! Se ha notificado al administrador. Cerrando sala de negocio.');
+                                alert('Solicitud enviada al administrador. Cerrando sala de negocio.');
                                 setTradeOffer(null);
                             } else {
-                                alert('Admin no configurado.');
+                                alert('El administrador no tiene configurado WhatsApp.');
                             }
                         }} className="text-[10px] font-bold text-blue-400 bg-blue-500/5 p-3 rounded-xl border border-blue-500/20 hover:bg-blue-500/10 transition-all flex items-center justify-center gap-1">
-                            <CheckCircleIcon className="h-3 w-3" /> Ya concreté
+                            <CheckCircleIcon className="h-3 w-3" /> Ya pagué/recibí
                         </button>
                         <button onClick={() => { 
                             const link = getWhatsAppLink(tradeOffer, 'REPORT'); 
@@ -234,7 +244,7 @@ export const Marketplace: React.FC = () => {
                                 else window.open(link, '_blank');
                             }
                         }} className="text-[10px] font-bold text-red-400 bg-red-500/5 p-3 rounded-xl border border-red-500/20 hover:bg-red-500/10 transition-all flex items-center justify-center gap-1">
-                            <ExclamationTriangleIcon className="h-3 w-3" /> Reportar
+                            <ExclamationTriangleIcon className="h-3 w-3" /> Reportar Estafa
                         </button>
                     </div>
                 </div>
