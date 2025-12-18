@@ -1,60 +1,35 @@
 
 import { GoogleGenAI } from "@google/genai";
 
-export const isAiConfigured = () => !!process.env.API_KEY;
+export const isAiConfigured = () => {
+  const key = process.env.API_KEY;
+  return typeof key === 'string' && key.length > 5;
+};
 
 export const generateDescription = async (title: string, category: string): Promise<string> => {
+  if (!isAiConfigured()) return "La IA no detecta la API Key. Por favor, revisa la configuración del entorno.";
   try {
-    // Re-initialize for each request to capture updated environment state if necessary
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const prompt = `
-      Escribe una descripción profesional, atractiva y concisa para una oferta de intercambio P2P.
-      Título: ${title}
-      Categoría: ${category}
-      
-      La descripción debe:
-      1. Generar confianza.
-      2. Ser clara sobre lo que se ofrece.
-      3. No exceder 50 palabras.
-      4. Estar en español.
-    `;
-
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: prompt,
+      contents: `Escribe una descripción corta (máximo 40 palabras) en español para una oferta P2P de: ${title} en la categoría ${category}. Que sea profesional.`,
     });
-
-    return response.text || "No se pudo generar la descripción.";
+    return response.text || "Descripción generada.";
   } catch (error) {
-    console.error("Error generating description:", error);
-    return "Error al conectar con la IA. Verifique la configuración.";
+    return "Error al conectar con Gemini.";
   }
 };
 
 export const analyzeOffer = async (offerDetails: string): Promise<string> => {
+  if (!isAiConfigured()) return "Configuración de IA no detectada.";
   try {
-    // Re-initialize for each request to capture updated environment state if necessary
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const prompt = `
-      Actúa como un experto en comercio global y seguridad P2P. Analiza esta oferta brevemente:
-      "${offerDetails}"
-      
-      Dame 3 puntos clave:
-      1. Nivel de riesgo estimado (Bajo/Medio/Alto).
-      2. Recomendación de seguridad para el intercambio.
-      3. Una pregunta clave que el comprador debería hacer.
-      
-      Responde en formato Markdown simple con emojis.
-    `;
-
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: prompt,
+      contents: `Analiza esta oferta P2P y dime: 1. Riesgo (Bajo/Medio/Alto), 2. Un consejo de seguridad, 3. Una pregunta para el vendedor. Detalles: ${offerDetails}. Responde en español con emojis.`,
     });
-
-    return response.text || "No se pudo analizar la oferta.";
+    return response.text || "Análisis completado.";
   } catch (error) {
-    console.error("Error analyzing offer:", error);
-    return "Error al conectar con la IA. Intente más tarde.";
+    return "Error en el análisis de IA.";
   }
 };

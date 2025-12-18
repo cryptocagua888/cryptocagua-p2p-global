@@ -18,7 +18,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
-    <!-- Tailwind CSS (CDN for styling) -->
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
@@ -29,68 +29,40 @@
               sans: ['Inter', 'sans-serif'],
             },
             colors: {
-              background: '#0f172a', // Slate 900
-              surface: '#1e293b',    // Slate 800
+              background: '#0f172a',
+              surface: '#1e293b',
               primary: {
-                400: '#22d3ee', // Cyan 400
-                500: '#06b6d4', // Cyan 500
-                600: '#0891b2', // Cyan 600
+                400: '#22d3ee',
+                500: '#06b6d4',
+                600: '#0891b2',
               },
               secondary: {
-                400: '#a78bfa', // Violet 400
-                500: '#8b5cf6', // Violet 500
+                400: '#a78bfa',
+                500: '#8b5cf6',
               }
-            },
-            backgroundImage: {
-              'hero-pattern': "url('https://www.transparenttextures.com/patterns/cubes.png')",
-              'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
             }
           }
         }
       }
     </script>
     
-    <!-- Polyfill for process (Safer version to avoid overwriting API Keys) -->
-    <script>
-      window.process = window.process || {};
-      window.process.env = window.process.env || {};
-      if (!window.process.env.NODE_ENV) {
-        window.process.env.NODE_ENV = 'production';
-      }
-    </script>
-
     <style>
       body {
         background-color: #0f172a;
         color: #f8fafc;
-        /* Prevent bounce effect on iOS PWA */
         overscroll-behavior-y: none;
+        font-family: 'Inter', sans-serif;
       }
       .glass-panel {
-        background: rgba(30, 41, 59, 0.7);
+        background: rgba(30, 41, 59, 0.8);
         backdrop-filter: blur(12px);
         -webkit-backdrop-filter: blur(12px);
         border: 1px solid rgba(255, 255, 255, 0.1);
       }
       .glass-nav {
-        background: rgba(15, 23, 42, 0.8);
+        background: rgba(15, 23, 42, 0.9);
         backdrop-filter: blur(16px);
         border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-      }
-      /* Custom scrollbar */
-      ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
-      }
-      ::-webkit-scrollbar-track {
-        background: #0f172a; 
-      }
-      ::-webkit-scrollbar-thumb {
-        background: #334155; 
-        border-radius: 4px;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background: #475569; 
       }
     </style>
   <script type="importmap">
@@ -106,9 +78,8 @@
 }
 </script>
 </head>
-  <body class="antialiased selection:bg-primary-500 selection:text-white">
+  <body class="antialiased">
     <div id="root"></div>
-    <!-- ESTA ES LA LINEA QUE FALTABA PARA QUE FUNCIONE EN VERCEL/VITE -->
     <script type="module" src="/index.tsx"></script>
   </body>
 </html>
