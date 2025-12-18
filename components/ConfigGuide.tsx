@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { saveSheetUrl, getSheetUrl, saveAdminEmail, getAdminEmail, saveAdminPhone, getAdminPhone, setAdminSession, verifyServerPin, testConnection, validateSheetUrl } from '../services/dataService';
+import { saveSheetUrl, getSheetUrl, saveAdminEmail, getAdminEmail, saveAdminPhone, getAdminPhone, setAdminSession, verifyServerPin, testConnection, validateSheetUrl, isAdmin } from '../services/dataService';
 import { ClipboardDocumentIcon, CheckIcon, LockClosedIcon, EnvelopeIcon, ServerIcon, ShareIcon, SparklesIcon, BoltIcon, ArrowPathIcon, PhoneIcon, XCircleIcon } from '@heroicons/react/24/outline';
 
 export const ConfigGuide: React.FC = () => {
@@ -11,8 +11,8 @@ export const ConfigGuide: React.FC = () => {
   const [emailSaved, setEmailSaved] = useState(false);
   const [phoneSaved, setPhoneSaved] = useState(false);
   
-  // Seguridad: Siempre empezamos como NO autenticados
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  // Verificamos si ya hay una sesión activa al montar el componente
+  const [isAuthenticated, setIsAuthenticated] = useState(isAdmin());
   const [pin, setPin] = useState('');
   const [loading, setLoading] = useState(false);
   const [testResult, setTestResult] = useState<{success?: boolean, message?: string} | null>(null);
@@ -22,11 +22,7 @@ export const ConfigGuide: React.FC = () => {
     setUrl(getSheetUrl());
     setEmail(getAdminEmail());
     setPhone(getAdminPhone());
-    
-    // Al salir del componente, siempre cerramos la sesión por seguridad
-    return () => {
-      setAdminSession(false);
-    };
+    // Se eliminó el auto-cierre al desmontar para permitir navegar al mercado sin perder el acceso
   }, []);
 
   useEffect(() => {
@@ -45,6 +41,12 @@ export const ConfigGuide: React.FC = () => {
       setPin('');
     }
     setLoading(false);
+  };
+
+  const handleLogout = () => {
+    setAdminSession(false);
+    setIsAuthenticated(false);
+    alert('Sesión administrativa cerrada.');
   };
 
   const copyMagicLink = () => {
@@ -87,10 +89,7 @@ export const ConfigGuide: React.FC = () => {
               {loading ? 'Verificando...' : 'Desbloquear Panel'}
             </button>
           </form>
-          
-          <p className="text-[10px] text-gray-600 text-center mt-6">
-            Si olvidaste tu PIN, contacta al desarrollador del sistema.
-          </p>
+          <p className="text-[10px] text-gray-600 text-center mt-6">Tu sesión permanecerá abierta mientras navegues por la App.</p>
         </div>
       </div>
     );
@@ -139,15 +138,16 @@ function doPost(e) {
       <div className="flex justify-between items-center mb-8">
         <h2 className="text-3xl font-bold text-white">Panel Maestro</h2>
         <button 
-          onClick={() => { setAdminSession(false); setIsAuthenticated(false); }}
-          className="flex items-center gap-2 px-4 py-2 bg-red-500/10 text-red-400 border border-red-500/20 rounded-xl font-bold text-xs hover:bg-red-500/20 transition-all"
+          onClick={handleLogout}
+          className="flex items-center gap-2 px-4 py-2 bg-red-500/10 text-red-400 border border-red-500/20 rounded-xl font-bold text-xs hover:bg-red-500/20 transition-all shadow-lg"
         >
-          <XCircleIcon className="h-5 w-5" /> Cerrar Panel
+          <XCircleIcon className="h-5 w-5" /> Cerrar Panel (Bloquear)
         </button>
       </div>
         
       <div className="space-y-8">
           <div className="bg-slate-800/50 p-6 rounded-xl border border-white/5 space-y-6">
+            <p className="text-xs text-green-400 font-bold flex items-center"><CheckIcon className="h-4 w-4 mr-1" /> Sesión activa: Ahora puedes ir al Mercado y verás las opciones de administrador.</p>
             <div>
               <h3 className="text-sm font-bold text-primary-400 mb-3 flex items-center uppercase tracking-widest">
                 <EnvelopeIcon className="h-4 w-4 mr-2" /> Email de Soporte
